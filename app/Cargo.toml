@@ -30,7 +30,7 @@ tiny-skia = "0.11"
 winit = { version = "0.30", default-features = false, features = ["x11", "rwh_06"] }
 
 [target.'cfg(windows)'.dependencies]
-scintilla-sys = { version = "5.5.7", features = ["win32"] }
+scintilla-sys = { git = "https://github.com/snuk182/scintilla-sys-rs", rev = "e23c6a0d19d248aa195a4685d5baa7df18ce002c", features = ["win32"] }
 
 [build-dependencies]
 cc = "1.0"
