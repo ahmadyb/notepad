@@ -6,7 +6,6 @@ use crate::ui::find_bar::FindBarState;
 use crate::ui::toolbar::ToolbarAction;
 use rfd::{MessageButtons,MessageDialog,MessageDialogResult};
 #[cfg(windows)]use raw_window_handle::{HasWindowHandle,RawWindowHandle};
-use std::ffi::c_void;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
