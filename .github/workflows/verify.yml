@@ -52,6 +52,32 @@ jobs:
         if: steps.test.outcome == 'failure'
         run: exit 1
       - name: Clippy
-        run: cargo +stable clippy --workspace --all-targets -- -D warnings
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo +stable clippy --workspace --all-targets -- -D warnings 2>&1 | tee /tmp/notepad-clippy.log
+      - name: Publish clippy diagnostics
+        if: steps.clippy.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          log = Path('/tmp/notepad-clippy.log').read_text(errors='replace')[-60000:]
+          payload = {
+              'name': 'NotePad Pro clippy diagnostics',
+              'head_sha': '${{ github.sha }}',
+              'status': 'completed',
+              'conclusion': 'failure',
+              'output': {'title': 'cargo clippy failed', 'summary': log},
+          }
+          Path('/tmp/clippy-check.json').write_text(json.dumps(payload))
+          PY
+          gh api repos/${{ github.repository }}/check-runs --method POST --input /tmp/clippy-check.json
+      - name: Fail clippy job after publishing diagnostics
+        if: steps.clippy.outcome == 'failure'
+        run: exit 1
       - name: Release build
         run: cargo +stable build --release -p notepad-pro
