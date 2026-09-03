@@ -104,6 +104,12 @@ impl ScintillaHost {
             );
         }
     }
+
+    pub fn focus(&self) {
+        unsafe {
+            SetFocus(self.hwnd);
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -170,6 +176,7 @@ extern "system" {
     ) -> i32;
     fn DestroyWindow(window: *mut c_void) -> i32;
     fn GetModuleHandleW(module_name: *const u16) -> *mut c_void;
+    fn SetFocus(window: *mut c_void) -> *mut c_void;
 }
 
 #[cfg(windows)]

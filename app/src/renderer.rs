@@ -1,28 +1,969 @@
 use crate::controller::EditorSnapshot;
-use crate::layout::{Layout,Rect};
-use crate::theme::{Rgba,Theme};
-use crate::ui::{self,FindBarState};
-use fontdue::{Font,FontSettings};
-use notepad_core::{LineColour,Note,ListType};
+use crate::layout::{Layout, Rect};
+use crate::theme::{Rgba, Theme};
+use crate::ui::extract_panel::ExtractPanelState;
+use crate::ui::{self, FindBarState};
+use fontdue::{Font, FontSettings};
+use notepad_core::{ColorOrder, LineColour, ListType, Note};
 use std::path::Path;
 use std::time::Instant;
-use tiny_skia::{Color,FillRule,PathBuilder,Pixmap,Transform};
+use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Transform};
 
-pub struct ChromeRenderer{font:Option<Font>,font_size:f32,started:Instant}
-impl Default for ChromeRenderer{fn default()->Self{Self::new()}}
-impl ChromeRenderer{pub fn new()->Self{Self{font:load_font(),font_size:15.,started:Instant::now()}}pub fn set_font_size(&mut self,s:f32){self.font_size=s.clamp(8.,96.)}
-#[allow(clippy::too_many_arguments)]pub fn render(&mut self,w:u32,h:u32,l:Layout,t:Theme,snapshot:Option<&EditorSnapshot>,tabs:&[(String,bool)],notes:&[Note],find:&FindBarState,show_line_numbers:bool,active_tab:usize)->Option<Pixmap>{let mut p=Pixmap::new(w.max(1),h.max(1))?;fill_rect(&mut p,Rect::new(0,0,w as i32,h as i32),t.window_bg);self.background(&mut p,w,h,t);self.title(&mut p,l,t);self.tabs(&mut p,l,t,tabs,active_tab);self.toolbar(&mut p,l,t);if find.open{self.find(&mut p,l,t,find)}self.sidebar(&mut p,l,t,notes);self.editor(&mut p,l,t,snapshot,show_line_numbers);self.status(&mut p,l,t,snapshot);Some(p)}
-fn background(&self,p:&mut Pixmap,w:u32,h:u32,t:Theme){for(i,(x,y,r))in[(0.72,0.46,360.),(0.18,0.72,290.),(0.88,0.88,210.)].into_iter().enumerate(){let time=self.started.elapsed().as_secs_f32();let x=w as f32*x+time.sin()*(r*0.05);let y=h as f32*y+(time*0.8).cos()*(r*0.04);fill_circle(p,x,y,r,if i%2==0{t.accent.with_alpha(10)}else{t.accent_alt.with_alpha(8)})}}
-fn title(&self,p:&mut Pixmap,l:Layout,t:Theme){fill_rect(p,l.titlebar,t.surface);self.text(p,16,21,"NotePad Pro",t.text,15.);self.text(p,118,20,"1.0.2",t.muted_text,11.);let(a,b,c)=l.titlebar_button_rects();fill_rect(p,a,t.surface_alt.with_alpha(80));fill_rect(p,b,t.surface_alt.with_alpha(80));fill_rect(p,c,t.accent.with_alpha(24));self.text(p,a.x+18,21,"—",t.text,14.);self.text(p,b.x+17,21,"□",t.text,12.);self.text(p,c.x+18,21,"×",t.text,15.)}
-fn tabs(&self,p:&mut Pixmap,l:Layout,t:Theme,tabs:&[(String,bool)],active_tab:usize){fill_rect(p,l.tab_bar,t.editor_bg);for(i,v)in ui::tab_bar::layout_tabs(l,tabs).iter().enumerate(){fill_rect(p,v.rect,if i==active_tab{t.surface}else{t.surface.with_alpha(90)});let title=if v.dirty{format!("{} •",v.title)}else{v.title.clone()};self.text(p,v.rect.x+12,v.rect.y+18,&title,if i==active_tab{t.text}else{t.muted_text},12.)}self.text(p,l.tab_bar.right()-34,l.tab_bar.y+24,"+",t.accent,20.)}
-fn toolbar(&self,p:&mut Pixmap,l:Layout,t:Theme){fill_rect(p,l.toolbar,t.surface.with_alpha(220));for(b,a)in ui::toolbar::buttons(l){if let ui::toolbar::ToolbarAction::Highlight(c)=a{fill_rect(p,b.rect,colour(c))}else{fill_rect(p,b.rect,t.surface);self.text(p,b.rect.x+10,b.rect.y+18,&b.label,t.text,11.)}}}
-fn find(&self,p:&mut Pixmap,l:Layout,t:Theme,f:&FindBarState){fill_rect(p,l.find_bar,t.surface_alt);fill_rect(p,Rect::new(12,l.find_bar.y+6,280,26),t.editor_bg);self.text(p,22,l.find_bar.y+23,if f.query.is_empty(){"Find…"}else{&f.query},if f.query.is_empty(){t.muted_text}else{t.text},12.);self.text(p,306,l.find_bar.y+23,&f.counter(),t.muted_text,11.)}
-fn sidebar(&self,p:&mut Pixmap,l:Layout,t:Theme,notes:&[Note]){if !l.sidebar_open{return}fill_rect(p,l.sidebar,t.surface);self.text(p,16,l.sidebar.y+25,"Notes",t.text,16.);fill_rect(p,Rect::new(12,l.sidebar.y+34,l.sidebar.w-24,26),t.editor_bg);self.text(p,22,l.sidebar.y+52,"Search notes…",t.muted_text,11.);for(i,n)in notes.iter().take(8).enumerate(){let r=Rect::new(12,l.sidebar.y+54+i as i32*68,l.sidebar.w-24,58);fill_rect(p,r,if n.pinned{t.accent.with_alpha(28)}else{t.surface_alt.with_alpha(120)});self.text(p,r.x+10,r.y+21,if n.title.is_empty(){"Untitled"}else{&n.title},t.text,11.);self.text(p,r.x+10,r.y+41,n.content.lines().next().unwrap_or(""),t.muted_text,10.)}}
-fn editor(&self,p:&mut Pixmap,l:Layout,t:Theme,s:Option<&EditorSnapshot>,show_line_numbers:bool){fill_rect(p,l.editor,t.editor_bg);let Some(s)=s else{return};let lines:Vec<&str>=s.text.split('\n').collect();let lh=(self.font_size*1.55).ceil()as i32;let margin=if show_line_numbers{Layout::line_number_width(lines.len(),(self.font_size*0.62)as i32)}else{0};if show_line_numbers{fill_rect(p,Rect::new(l.editor.x,l.editor.y,margin,l.editor.h),t.surface.with_alpha(100));}let cursor_line=s.text[..s.cursor.min(s.text.len())].bytes().filter(|b|*b==b'\n').count();for(i,line)in lines.iter().enumerate().take(((l.editor.h-18).max(0)/lh.max(1))as usize+1){let base=l.editor.y+22+i as i32*lh;if i==cursor_line{fill_rect(p,Rect::new(l.editor.x+margin,base-lh+4,l.editor.w-margin,lh),t.accent.with_alpha(14))}
-if let Some(m)=s.metadata.get(i){if m.colour!=LineColour::None{fill_rect(p,Rect::new(l.editor.x+margin,base-lh+4,l.editor.w-margin,lh),colour(m.colour).with_alpha(45))}let mark=match m.list_type{ListType::Bullet=>"•",ListType::Check if m.checked=>"☑",ListType::Check=>"☐",ListType::Number=>"·",ListType::None=>""};self.text(p,l.editor.x+6,base,mark,t.accent,13.)}
-if show_line_numbers{self.text(p,l.editor.x+margin-10,base,&(i+1).to_string(),t.muted_text,10.);}self.text(p,l.editor.x+margin+14,base,line,t.text,self.font_size)}let start=s.text[..s.cursor.min(s.text.len())].rfind('\n').map_or(0,|i|i+1);let col=s.text[start..s.cursor.min(s.text.len())].chars().count();fill_rect(p,Rect::new(l.editor.x+margin+14+(col as f32*self.font_size*0.62)as i32,l.editor.y+8+cursor_line as i32*lh,2,lh-4),t.accent)}
-fn status(&self,p:&mut Pixmap,l:Layout,t:Theme,s:Option<&EditorSnapshot>){let track_top=l.editor.y as f32;let track_height=(l.editor.h as f32).max(1.);let total_lines=s.map_or(1,|v|v.text.split('\n').count().max(1));let visible_lines=((l.editor.h as f32)/(self.font_size*1.55).max(1.)).max(1.) as usize;let thumb_height=(track_height*(visible_lines.min(total_lines) as f32/total_lines as f32)).clamp(24f32.min(track_height),track_height);let max_scroll=total_lines.saturating_sub(visible_lines);let scroll_ratio=s.map_or(0.,|v|if max_scroll==0{0.}else{v.scroll_line.min(max_scroll)as f32/max_scroll as f32});fill_rect(p,Rect::new(l.editor.right()-7,l.editor.y,3,l.editor.h),Rgba::rgba(24,28,36,150));fill_rect(p,Rect::new(l.editor.right()-7,track_top as i32+((track_height-thumb_height)*scroll_ratio)as i32,3,thumb_height as i32),t.accent);fill_rect(p,l.status_bar,t.surface);let(location,right)=if let Some(s)=s{let pos=s.cursor.min(s.text.len());let line=s.text[..pos].bytes().filter(|b|*b==b'\n').count()+1;let start=s.text[..pos].rfind('\n').map_or(0,|i|i+1);(format!("Ln {line}, Col {}",s.text[start..pos].chars().count()+1),format!("{}  ·  {}{}",s.encoding.label(),s.line_ending.label(),if s.dirty{"  ·  Modified"}else{""}))}else{("Ln 1, Col 1".into(),"UTF-8  ·  LF".into())};self.text(p,14,l.status_bar.y+17,&location,t.text,10.5);self.text(p,l.status_bar.right()-(right.chars().count()as i32*6+20),l.status_bar.y+17,&right,t.muted_text,10.5)}
-fn text(&self,p:&mut Pixmap,x:i32,baseline:i32,s:&str,c:Rgba,size:f32){let Some(font)=self.font.as_ref()else{return};let mut pen=x as f32;for ch in s.chars(){let(m,b)=font.rasterize(ch,size);let top=baseline as f32-m.ymin as f32-m.height as f32;for y in 0..m.height{for xx in 0..m.width{let a=b[y*m.width+xx];if a>0{blend(p,pen as i32+m.xmin+xx as i32,top as i32+y as i32,c,(u16::from(a)*u16::from(c.a)/255)as u8)}}}pen+=m.advance_width}}
+pub struct ChromeRenderer {
+    font: Option<Font>,
+    font_size: f32,
+    started: Instant,
 }
-fn load_font()->Option<Font>{[std::env::var_os("NOTEPAD_PRO_FONT").map(std::path::PathBuf::from),Some(Path::new("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf").into()),Some(Path::new("C:\\Windows\\Fonts\\consola.ttf").into()),Some(Path::new("/System/Library/Fonts/Menlo.ttc").into())].into_iter().flatten().find_map(|p|Font::from_bytes(std::fs::read(p).ok()?,FontSettings::default()).ok())}
-fn colour(c:LineColour)->Rgba{let v=c.rgb().unwrap_or(0);Rgba::rgb((v>>16)as u8,(v>>8)as u8,v as u8)}fn fill_rect(p:&mut Pixmap,r:Rect,c:Rgba){if r.w<=0||r.h<=0{return}let mut b=PathBuilder::new();b.move_to(r.x as f32,r.y as f32);b.line_to(r.right()as f32,r.y as f32);b.line_to(r.right()as f32,r.bottom()as f32);b.line_to(r.x as f32,r.bottom()as f32);b.close();if let Some(path)=b.finish(){let mut paint=tiny_skia::Paint::default();paint.set_color(Color::from_rgba8(c.r,c.g,c.b,c.a));p.fill_path(&path,&paint,FillRule::Winding,Transform::identity(),None)}}fn fill_circle(p:&mut Pixmap,x:f32,y:f32,r:f32,c:Rgba){let mut b=PathBuilder::new();b.push_circle(x,y,r);if let Some(path)=b.finish(){let mut paint=tiny_skia::Paint::default();paint.set_color(Color::from_rgba8(c.r,c.g,c.b,c.a));p.fill_path(&path,&paint,FillRule::Winding,Transform::identity(),None)}}fn blend(p:&mut Pixmap,x:i32,y:i32,c:Rgba,a:u8){if x<0||y<0||x>=p.width()as i32||y>=p.height()as i32{return}let i=(y as usize*p.width()as usize+x as usize)*4;let d=p.data_mut();let inv=255-u16::from(a);d[i]=((u16::from(c.r)*u16::from(a)+u16::from(d[i])*inv)/255)as u8;d[i+1]=((u16::from(c.g)*u16::from(a)+u16::from(d[i+1])*inv)/255)as u8;d[i+2]=((u16::from(c.b)*u16::from(a)+u16::from(d[i+2])*inv)/255)as u8;d[i+3]=a.max(d[i+3])}
+
+impl Default for ChromeRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ChromeRenderer {
+    pub fn new() -> Self {
+        Self {
+            font: load_font(),
+            font_size: 15.0,
+            started: Instant::now(),
+        }
+    }
+
+    pub fn set_font_size(&mut self, size: f32) {
+        self.font_size = size.clamp(8.0, 96.0);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn render(
+        &mut self,
+        width: u32,
+        height: u32,
+        layout: Layout,
+        theme: Theme,
+        snapshot: Option<&EditorSnapshot>,
+        tabs: &[(String, bool)],
+        notes: &[Note],
+        find: &FindBarState,
+        extract: &ExtractPanelState,
+        sidebar_query: &str,
+        show_line_numbers: bool,
+        active_tab: usize,
+        pointer: (i32, i32),
+    ) -> Option<Pixmap> {
+        let mut pixmap = Pixmap::new(width.max(1), height.max(1))?;
+        fill_rect(
+            &mut pixmap,
+            Rect::new(0, 0, width as i32, height as i32),
+            theme.window_bg,
+        );
+        self.background(&mut pixmap, width, height, theme);
+        self.title(&mut pixmap, layout, theme);
+        self.tabs(&mut pixmap, layout, theme, tabs, active_tab, pointer);
+        self.toolbar(&mut pixmap, layout, theme, pointer);
+        if find.open {
+            self.find(&mut pixmap, layout, theme, find, pointer);
+        }
+        self.sidebar(&mut pixmap, layout, theme, notes, sidebar_query, pointer);
+        self.editor(
+            &mut pixmap,
+            layout,
+            theme,
+            snapshot,
+            find,
+            show_line_numbers,
+        );
+        if extract.open && layout.extract_open {
+            self.extract(&mut pixmap, layout, theme, extract, pointer);
+        }
+        self.status(&mut pixmap, layout, theme, snapshot);
+        Some(pixmap)
+    }
+
+    fn background(&self, pixmap: &mut Pixmap, width: u32, height: u32, theme: Theme) {
+        let time = self.started.elapsed().as_secs_f32();
+        for (index, (x, y, radius)) in
+            [(0.72, 0.46, 360.0), (0.18, 0.72, 290.0), (0.88, 0.88, 210.0)]
+                .into_iter()
+                .enumerate()
+        {
+            let x = width as f32 * x + time.sin() * radius * 0.05;
+            let y = height as f32 * y + (time * 0.8).cos() * radius * 0.04;
+            fill_circle(
+                pixmap,
+                x,
+                y,
+                radius,
+                if index % 2 == 0 {
+                    theme.accent.with_alpha(10)
+                } else {
+                    theme.accent_alt.with_alpha(8)
+                },
+            );
+        }
+    }
+
+    fn title(&self, pixmap: &mut Pixmap, layout: Layout, theme: Theme) {
+        fill_rect(pixmap, layout.titlebar, theme.surface);
+        draw_logo(
+            pixmap,
+            Rect::new(layout.titlebar.x + 14, layout.titlebar.y + 7, 20, 19),
+            theme.accent,
+            theme.editor_bg,
+        );
+        self.text(pixmap, 43, 21, "NotePad Pro", theme.text, 14.0);
+        self.text(pixmap, 130, 20, "1.0.2", theme.muted_text, 10.0);
+        let (minimise, maximise, close) = layout.titlebar_button_rects();
+        fill_rect(pixmap, minimise, theme.surface_alt.with_alpha(70));
+        fill_rect(pixmap, maximise, theme.surface_alt.with_alpha(70));
+        fill_rect(pixmap, close, theme.accent.with_alpha(24));
+        self.text(pixmap, minimise.x + 18, 21, "—", theme.text, 14.0);
+        self.text(pixmap, maximise.x + 17, 21, "□", theme.text, 12.0);
+        self.text(pixmap, close.x + 18, 21, "×", theme.text, 15.0);
+    }
+
+    fn tabs(
+        &self,
+        pixmap: &mut Pixmap,
+        layout: Layout,
+        theme: Theme,
+        tabs: &[(String, bool)],
+        active_tab: usize,
+        pointer: (i32, i32),
+    ) {
+        fill_rect(pixmap, layout.tab_bar, theme.editor_bg);
+        let tab_views = ui::tab_bar::layout_tabs(layout, tabs);
+        for (index, view) in tab_views.iter().enumerate() {
+            let active = index == active_tab;
+            let hover = view.rect.contains(pointer.0, pointer.1);
+            fill_rect(
+                pixmap,
+                view.rect,
+                if active {
+                    theme.surface
+                } else if hover {
+                    theme.surface_alt.with_alpha(150)
+                } else {
+                    theme.surface.with_alpha(85)
+                },
+            );
+            if active {
+                fill_rect(
+                    pixmap,
+                    Rect::new(view.rect.x, view.rect.bottom() - 2, view.rect.w, 2),
+                    theme.accent,
+                );
+            }
+            let title = if view.dirty {
+                format!("{} •", view.title)
+            } else {
+                view.title.clone()
+            };
+            self.text(
+                pixmap,
+                view.rect.x + 12,
+                view.rect.y + 18,
+                &clip_text(&title, 22),
+                if active { theme.text } else { theme.muted_text },
+                11.5,
+            );
+            let close_rect = Rect::new(view.rect.right() - 30, view.rect.y + 3, 25, 24);
+            if close_rect.contains(pointer.0, pointer.1) || active {
+                self.text(
+                    pixmap,
+                    close_rect.x + 8,
+                    close_rect.y + 17,
+                    "×",
+                    if close_rect.contains(pointer.0, pointer.1) {
+                        theme.text
+                    } else {
+                        theme.muted_text
+                    },
+                    14.0,
+                );
+            }
+        }
+        let plus = layout.tab_plus_rect();
+        fill_rect(
+            pixmap,
+            plus,
+            if plus.contains(pointer.0, pointer.1) {
+                theme.accent.with_alpha(35)
+            } else {
+                theme.surface.with_alpha(80)
+            },
+        );
+        self.text(pixmap, plus.x + 16, plus.y + 26, "+", theme.accent, 20.0);
+    }
+
+    fn toolbar(&self, pixmap: &mut Pixmap, layout: Layout, theme: Theme, pointer: (i32, i32)) {
+        fill_rect(pixmap, layout.toolbar, theme.surface.with_alpha(235));
+        for (button, action) in ui::toolbar::buttons(layout) {
+            let hover = button.contains(pointer.0, pointer.1);
+            let background = if hover {
+                theme.accent.with_alpha(45)
+            } else {
+                theme.surface
+            };
+            if let ui::toolbar::ToolbarAction::Highlight(colour) = action {
+                fill_rect(pixmap, button.rect, line_colour(colour));
+                fill_rect(
+                    pixmap,
+                    button.rect.inset(2),
+                    line_colour(colour).with_alpha(if hover { 235 } else { 190 }),
+                );
+            } else {
+                fill_rect(pixmap, button.rect, background);
+                self.text(
+                    pixmap,
+                    button.rect.x + 9,
+                    button.rect.y + 18,
+                    &button.label,
+                    theme.text,
+                    10.5,
+                );
+            }
+        }
+        fill_rect(
+            pixmap,
+            Rect::new(layout.toolbar.x, layout.toolbar.bottom() - 1, layout.toolbar.w, 1),
+            theme.border,
+        );
+    }
+
+    fn find(
+        &self,
+        pixmap: &mut Pixmap,
+        layout: Layout,
+        theme: Theme,
+        find: &FindBarState,
+        pointer: (i32, i32),
+    ) {
+        fill_rect(pixmap, layout.find_bar, theme.surface_alt);
+        let first_y = layout.find_bar.y + 8;
+        let query_rect = Rect::new(layout.find_bar.x + 14, first_y, 300, 28);
+        input_box(
+            pixmap,
+            query_rect,
+            theme,
+            find.focus == ui::find_bar::FindField::Query,
+        );
+        self.text(
+            pixmap,
+            query_rect.x + 10,
+            query_rect.y + 19,
+            if find.query.is_empty() {
+                "Find in document…"
+            } else {
+                &clip_text(&find.query, 34)
+            },
+            if find.query.is_empty() {
+                theme.muted_text
+            } else {
+                theme.text
+            },
+            11.0,
+        );
+        self.text(
+            pixmap,
+            query_rect.right() + 12,
+            first_y + 19,
+            &find.counter(),
+            theme.muted_text,
+            10.5,
+        );
+        let previous = Rect::new(query_rect.right() + 112, first_y, 30, 28);
+        let next = Rect::new(previous.right() + 4, first_y, 30, 28);
+        let replace_toggle = Rect::new(next.right() + 10, first_y, 92, 28);
+        let close = Rect::new(layout.find_bar.right() - 40, first_y, 28, 28);
+        small_button(pixmap, previous, theme, previous.contains(pointer.0, pointer.1));
+        small_button(pixmap, next, theme, next.contains(pointer.0, pointer.1));
+        self.text(pixmap, previous.x + 10, previous.y + 19, "‹", theme.text, 17.0);
+        self.text(pixmap, next.x + 10, next.y + 19, "›", theme.text, 17.0);
+        small_button(
+            pixmap,
+            replace_toggle,
+            theme,
+            replace_toggle.contains(pointer.0, pointer.1),
+        );
+        self.text(
+            pixmap,
+            replace_toggle.x + 9,
+            replace_toggle.y + 18,
+            if find.show_replace { "Hide replace" } else { "Replace" },
+            theme.text,
+            10.0,
+        );
+        self.text(pixmap, close.x + 8, close.y + 19, "×", theme.text, 15.0);
+
+        if find.show_replace {
+            let second_y = layout.find_bar.y + 48;
+            let replacement = Rect::new(layout.find_bar.x + 14, second_y, 300, 28);
+            input_box(
+                pixmap,
+                replacement,
+                theme,
+                find.focus == ui::find_bar::FindField::Replacement,
+            );
+            self.text(
+                pixmap,
+                replacement.x + 10,
+                replacement.y + 19,
+                if find.replacement.is_empty() {
+                    "Replace with…"
+                } else {
+                    &clip_text(&find.replacement, 34)
+                },
+                if find.replacement.is_empty() {
+                    theme.muted_text
+                } else {
+                    theme.text
+                },
+                11.0,
+            );
+            let replace = Rect::new(replacement.right() + 14, second_y, 74, 28);
+            let replace_all = Rect::new(replace.right() + 6, second_y, 88, 28);
+            small_button(pixmap, replace, theme, replace.contains(pointer.0, pointer.1));
+            small_button(
+                pixmap,
+                replace_all,
+                theme,
+                replace_all.contains(pointer.0, pointer.1),
+            );
+            self.text(pixmap, replace.x + 11, second_y + 19, "Replace", theme.text, 10.0);
+            self.text(
+                pixmap,
+                replace_all.x + 10,
+                second_y + 19,
+                "Replace all",
+                theme.text,
+                10.0,
+            );
+        }
+        let check_y = if find.show_replace {
+            layout.find_bar.y + 51
+        } else {
+            layout.find_bar.y + 12
+        };
+        let check = Rect::new(layout.find_bar.right() - 230, check_y, 20, 20);
+        checkbox(pixmap, check, theme, find.options.case_sensitive);
+        self.text(
+            pixmap,
+            check.right() + 6,
+            check.y + 15,
+            "Match case",
+            theme.muted_text,
+            10.0,
+        );
+    }
+
+    fn sidebar(
+        &self,
+        pixmap: &mut Pixmap,
+        layout: Layout,
+        theme: Theme,
+        notes: &[Note],
+        query: &str,
+        pointer: (i32, i32),
+    ) {
+        if !layout.sidebar_open || layout.sidebar.w <= 0 {
+            return;
+        }
+        fill_rect(pixmap, layout.sidebar, theme.surface);
+        self.text(
+            pixmap,
+            layout.sidebar.x + 16,
+            layout.sidebar.y + 27,
+            "Notes",
+            theme.text,
+            16.0,
+        );
+        self.text(
+            pixmap,
+            layout.sidebar.right() - 74,
+            layout.sidebar.y + 26,
+            &format!("{}", notes.len()),
+            theme.muted_text,
+            10.0,
+        );
+        let search = Rect::new(
+            layout.sidebar.x + 12,
+            layout.sidebar.y + 40,
+            layout.sidebar.w - 24,
+            30,
+        );
+        input_box(pixmap, search, theme, false);
+        self.text(
+            pixmap,
+            search.x + 10,
+            search.y + 20,
+            if query.is_empty() {
+                "⌕  Search notes…"
+            } else {
+                &format!("⌕  {}", clip_text(query, 28))
+            },
+            if query.is_empty() {
+                theme.muted_text
+            } else {
+                theme.text
+            },
+            10.5,
+        );
+        for (index, note) in notes.iter().take(40).enumerate() {
+            let card = Rect::new(
+                layout.sidebar.x + 12,
+                layout.sidebar.y + 82 + index as i32 * 74,
+                layout.sidebar.w - 24,
+                64,
+            );
+            let hover = card.contains(pointer.0, pointer.1);
+            fill_rect(
+                pixmap,
+                card,
+                if hover {
+                    theme.accent.with_alpha(38)
+                } else if note.pinned {
+                    theme.accent.with_alpha(27)
+                } else {
+                    theme.surface_alt.with_alpha(125)
+                },
+            );
+            let title = if note.title.is_empty() {
+                "Untitled"
+            } else {
+                &note.title
+            };
+            self.text(
+                pixmap,
+                card.x + 10,
+                card.y + 21,
+                &clip_text(title, 22),
+                theme.text,
+                10.8,
+            );
+            if note.pinned {
+                self.text(pixmap, card.right() - 52, card.y + 20, "★", theme.accent, 11.0);
+            }
+            self.text(
+                pixmap,
+                card.x + 10,
+                card.y + 42,
+                &clip_text(note.content.lines().next().unwrap_or(""), 30),
+                theme.muted_text,
+                9.5,
+            );
+            self.text(pixmap, card.right() - 28, card.y + 20, "×", theme.muted_text, 12.0);
+        }
+        fill_rect(
+            pixmap,
+            Rect::new(layout.sidebar.right() - 1, layout.sidebar.y, 1, layout.sidebar.h),
+            theme.border,
+        );
+    }
+
+    fn editor(
+        &self,
+        pixmap: &mut Pixmap,
+        layout: Layout,
+        theme: Theme,
+        snapshot: Option<&EditorSnapshot>,
+        find: &FindBarState,
+        show_line_numbers: bool,
+    ) {
+        fill_rect(pixmap, layout.editor, theme.editor_bg);
+        let Some(snapshot) = snapshot else {
+            return;
+        };
+        let lines: Vec<&str> = snapshot.text.split('\n').collect();
+        let line_height = (self.font_size * 1.55).ceil() as i32;
+        let margin = if show_line_numbers {
+            Layout::line_number_width(lines.len(), (self.font_size * 0.62) as i32)
+        } else {
+            12
+        };
+        if show_line_numbers {
+            fill_rect(
+                pixmap,
+                Rect::new(layout.editor.x, layout.editor.y, margin, layout.editor.h),
+                theme.surface.with_alpha(105),
+            );
+        }
+        let cursor = snapshot.cursor.min(snapshot.text.len());
+        let cursor_line = snapshot.text[..cursor]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        let selected = snapshot.selection.range();
+        let selection_start_line = snapshot
+            .text
+            .get(..selected.start)
+            .unwrap_or("")
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        let selection_end_line = snapshot
+            .text
+            .get(..selected.end)
+            .unwrap_or("")
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        let visible = ((layout.editor.h - 18).max(0) / line_height.max(1)) as usize + 1;
+        for (index, line) in lines.iter().enumerate().take(visible) {
+            let baseline = layout.editor.y + 24 + index as i32 * line_height;
+            let row = Rect::new(
+                layout.editor.x + margin,
+                baseline - line_height + 5,
+                (layout.editor.w - margin - 8).max(0),
+                line_height,
+            );
+            if index == cursor_line {
+                fill_rect(pixmap, row, theme.accent.with_alpha(13));
+            }
+            if !selected.is_empty() && index >= selection_start_line && index <= selection_end_line {
+                fill_rect(pixmap, row, theme.accent.with_alpha(48));
+            }
+            if let Some(metadata) = snapshot.metadata.get(index) {
+                if metadata.colour != LineColour::None {
+                    fill_rect(pixmap, row, line_colour(metadata.colour).with_alpha(64));
+                    fill_rect(
+                        pixmap,
+                        Rect::new(row.x, row.y, 3, row.h),
+                        line_colour(metadata.colour),
+                    );
+                }
+                let marker = match metadata.list_type {
+                    ListType::Bullet => "•",
+                    ListType::Check if metadata.checked => "☑",
+                    ListType::Check => "☐",
+                    ListType::Number => "·",
+                    ListType::None => "",
+                };
+                if !marker.is_empty() {
+                    self.text(
+                        pixmap,
+                        layout.editor.x + 6 + metadata.indent as i32 * 14,
+                        baseline,
+                        marker,
+                        theme.accent,
+                        13.0,
+                    );
+                }
+            }
+            if show_line_numbers {
+                self.text(
+                    pixmap,
+                    layout.editor.x + margin - 10,
+                    baseline,
+                    &(index + 1).to_string(),
+                    theme.muted_text,
+                    10.0,
+                );
+            }
+            self.text(
+                pixmap,
+                layout.editor.x + margin + 14,
+                baseline,
+                &clip_text(line, 180),
+                theme.text,
+                self.font_size,
+            );
+            for found in &find.matches {
+                if found.line == index {
+                    let x = layout.editor.x
+                        + margin
+                        + 14
+                        + (found.column as f32 * self.font_size * 0.62) as i32;
+                    fill_rect(
+                        pixmap,
+                        Rect::new(x, baseline + 2, (found.end - found.start).max(2) as i32 * 7, 2),
+                        theme.accent,
+                    );
+                }
+            }
+        }
+        let line_start = snapshot.text[..cursor]
+            .rfind('\n')
+            .map_or(0, |position| position + 1);
+        let column = snapshot.text[line_start..cursor].chars().count();
+        fill_rect(
+            pixmap,
+            Rect::new(
+                layout.editor.x + margin + 14 + (column as f32 * self.font_size * 0.62) as i32,
+                layout.editor.y + 10 + cursor_line as i32 * line_height,
+                2,
+                (line_height - 5).max(3),
+            ),
+            theme.accent,
+        );
+    }
+
+    fn extract(
+        &self,
+        pixmap: &mut Pixmap,
+        layout: Layout,
+        theme: Theme,
+        extract: &ExtractPanelState,
+        pointer: (i32, i32),
+    ) {
+        let bounds = layout.extract_panel;
+        fill_rect(pixmap, bounds, theme.surface);
+        fill_rect(
+            pixmap,
+            Rect::new(bounds.x, bounds.y, 2, bounds.h),
+            theme.accent,
+        );
+        self.text(pixmap, bounds.x + 16, bounds.y + 27, "Extract by Color", theme.text, 15.0);
+        self.text(
+            pixmap,
+            bounds.right() - 30,
+            bounds.y + 27,
+            "×",
+            theme.muted_text,
+            15.0,
+        );
+        self.text(
+            pixmap,
+            bounds.x + 16,
+            bounds.y + 49,
+            "Choose line colors to collect",
+            theme.muted_text,
+            10.0,
+        );
+        for (index, (colour, count)) in extract.available_colours.iter().enumerate() {
+            let row = extract.colour_row(index);
+            let hover = row.contains(pointer.0, pointer.1);
+            fill_rect(
+                pixmap,
+                row,
+                if hover {
+                    theme.surface_alt.with_alpha(170)
+                } else {
+                    theme.surface_alt.with_alpha(80)
+                },
+            );
+            checkbox(
+                pixmap,
+                Rect::new(row.x + 6, row.y + 3, 20, 20),
+                theme,
+                extract.selected(*colour),
+            );
+            fill_rect(
+                pixmap,
+                Rect::new(row.x + 36, row.y + 7, 13, 13),
+                line_colour(*colour),
+            );
+            self.text(
+                pixmap,
+                row.x + 58,
+                row.y + 17,
+                &format!("{}  ({count})", colour.name()),
+                theme.text,
+                10.5,
+            );
+        }
+        let order_y = bounds.y + 77;
+        self.text(pixmap, bounds.x + 16, order_y, "Order", theme.muted_text, 10.0);
+        let document = Rect::new(bounds.x + 70, order_y - 15, 98, 24);
+        let grouped = Rect::new(document.right() + 5, order_y - 15, 90, 24);
+        small_button(pixmap, document, theme, document.contains(pointer.0, pointer.1));
+        small_button(pixmap, grouped, theme, grouped.contains(pointer.0, pointer.1));
+        if matches!(extract.order, ColorOrder::Document) {
+            fill_rect(pixmap, document.inset(2), theme.accent.with_alpha(80));
+        } else {
+            fill_rect(pixmap, grouped.inset(2), theme.accent.with_alpha(80));
+        }
+        self.text(pixmap, document.x + 9, document.y + 16, "Document", theme.text, 9.5);
+        self.text(pixmap, grouped.x + 10, grouped.y + 16, "By color", theme.text, 9.5);
+
+        let preview = extract.preview_rect();
+        fill_rect(pixmap, preview, theme.editor_bg);
+        self.text(pixmap, preview.x + 10, preview.y + 19, "Live preview", theme.muted_text, 10.0);
+        let mut y = preview.y + 38;
+        for line in extract.preview.lines().take(12) {
+            self.text(pixmap, preview.x + 10, y, &clip_text(line, 38), theme.text, 10.0);
+            y += 17;
+            if y > preview.bottom() - 22 {
+                break;
+            }
+        }
+        let copy = Rect::new(bounds.x + 14, bounds.bottom() - 40, 72, 28);
+        let new_tab = Rect::new(copy.right() + 6, bounds.bottom() - 40, 84, 28);
+        let export = Rect::new(new_tab.right() + 6, bounds.bottom() - 40, 72, 28);
+        for button in [copy, new_tab, export] {
+            small_button(pixmap, button, theme, button.contains(pointer.0, pointer.1));
+        }
+        self.text(pixmap, copy.x + 12, copy.y + 19, "Copy", theme.text, 10.0);
+        self.text(pixmap, new_tab.x + 12, new_tab.y + 19, "New tab", theme.text, 10.0);
+        self.text(pixmap, export.x + 11, export.y + 19, "Export", theme.text, 10.0);
+        if extract.copied {
+            self.text(pixmap, bounds.x + 16, bounds.bottom() - 51, "Copied", theme.accent, 9.0);
+        }
+    }
+
+    fn status(
+        &self,
+        pixmap: &mut Pixmap,
+        layout: Layout,
+        theme: Theme,
+        snapshot: Option<&EditorSnapshot>,
+    ) {
+        let track_height = layout.editor.h.max(1) as f32;
+        let total_lines = snapshot.map_or(1, |value| value.text.split('\n').count().max(1));
+        let visible_lines = ((layout.editor.h as f32) / (self.font_size * 1.55).max(1.0))
+            .max(1.0) as usize;
+        let thumb_height = (track_height
+            * visible_lines.min(total_lines) as f32
+            / total_lines as f32)
+            .clamp(24.0_f32.min(track_height), track_height);
+        let max_scroll = total_lines.saturating_sub(visible_lines);
+        let scroll_ratio = snapshot.map_or(0.0, |value| {
+            if max_scroll == 0 {
+                0.0
+            } else {
+                value.scroll_line.min(max_scroll) as f32 / max_scroll as f32
+            }
+        });
+        fill_rect(
+            pixmap,
+            Rect::new(layout.editor.right() - 8, layout.editor.y, 4, layout.editor.h),
+            theme.surface_alt.with_alpha(150),
+        );
+        fill_rect(
+            pixmap,
+            Rect::new(
+                layout.editor.right() - 8,
+                layout.editor.y + ((track_height - thumb_height) * scroll_ratio) as i32,
+                4,
+                thumb_height as i32,
+            ),
+            theme.accent.with_alpha(190),
+        );
+        fill_rect(pixmap, layout.status_bar, theme.surface);
+        let (location, right) = if let Some(snapshot) = snapshot {
+            let position = snapshot.cursor.min(snapshot.text.len());
+            let line = snapshot.text[..position]
+                .bytes()
+                .filter(|byte| *byte == b'\n')
+                .count()
+                + 1;
+            let start = snapshot.text[..position]
+                .rfind('\n')
+                .map_or(0, |index| index + 1);
+            (
+                format!(
+                    "Ln {line}, Col {}  ·  {} words",
+                    snapshot.text[start..position].chars().count() + 1,
+                    snapshot.text.split_whitespace().count()
+                ),
+                format!(
+                    "{}  ·  {}{}",
+                    snapshot.encoding.label(),
+                    snapshot.line_ending.label(),
+                    if snapshot.dirty { "  ·  Modified" } else { "" }
+                ),
+            )
+        } else {
+            ("Ln 1, Col 1".into(), "UTF-8  ·  LF".into())
+        };
+        self.text(pixmap, 14, layout.status_bar.y + 18, &location, theme.text, 10.0);
+        self.text(
+            pixmap,
+            layout.status_bar.right() - (right.chars().count() as i32 * 6 + 22),
+            layout.status_bar.y + 18,
+            &right,
+            theme.muted_text,
+            10.0,
+        );
+    }
+
+    fn text(&self, pixmap: &mut Pixmap, x: i32, baseline: i32, text: &str, colour: Rgba, size: f32) {
+        let Some(font) = self.font.as_ref() else {
+            return;
+        };
+        let mut pen = x as f32;
+        for character in text.chars() {
+            let (metrics, bitmap) = font.rasterize(character, size);
+            let top = baseline as f32 - metrics.ymin as f32 - metrics.height as f32;
+            for y in 0..metrics.height {
+                for xx in 0..metrics.width {
+                    let coverage = bitmap[y * metrics.width + xx];
+                    if coverage > 0 {
+                        blend(
+                            pixmap,
+                            pen as i32 + metrics.xmin + xx as i32,
+                            top as i32 + y as i32,
+                            colour,
+                            (u16::from(coverage) * u16::from(colour.a) / 255) as u8,
+                        );
+                    }
+                }
+            }
+            pen += metrics.advance_width;
+        }
+    }
+}
+
+fn load_font() -> Option<Font> {
+    [
+        std::env::var_os("NOTEPAD_PRO_FONT").map(std::path::PathBuf::from),
+        Some(Path::new("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf").into()),
+        Some(Path::new("C:\\Windows\\Fonts\\consola.ttf").into()),
+        Some(Path::new("/System/Library/Fonts/Menlo.ttc").into()),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(|path| Font::from_bytes(std::fs::read(path).ok()?, FontSettings::default()).ok())
+}
+
+fn clip_text(text: &str, maximum: usize) -> String {
+    let mut result: String = text.chars().take(maximum).collect();
+    if text.chars().count() > maximum {
+        result.push('…');
+    }
+    result
+}
+
+fn line_colour(line_colour: LineColour) -> Rgba {
+    let value = line_colour.rgb().unwrap_or(0);
+    Rgba::rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
+}
+
+fn input_box(pixmap: &mut Pixmap, rect: Rect, theme: Theme, focused: bool) {
+    fill_rect(pixmap, rect, theme.editor_bg);
+    fill_rect(
+        pixmap,
+        Rect::new(rect.x, rect.bottom() - if focused { 2 } else { 1 }, rect.w, if focused { 2 } else { 1 }),
+        if focused { theme.accent } else { theme.border },
+    );
+}
+
+fn small_button(pixmap: &mut Pixmap, rect: Rect, theme: Theme, hover: bool) {
+    fill_rect(
+        pixmap,
+        rect,
+        if hover {
+            theme.accent.with_alpha(48)
+        } else {
+            theme.surface.with_alpha(210)
+        },
+    );
+    fill_rect(
+        pixmap,
+        Rect::new(rect.x, rect.bottom() - 1, rect.w, 1),
+        theme.border,
+    );
+}
+
+fn checkbox(pixmap: &mut Pixmap, rect: Rect, theme: Theme, checked: bool) {
+    fill_rect(pixmap, rect, theme.editor_bg);
+    fill_rect(
+        pixmap,
+        Rect::new(rect.x, rect.y, rect.w, 1),
+        if checked { theme.accent } else { theme.border },
+    );
+    fill_rect(
+        pixmap,
+        Rect::new(rect.x, rect.bottom() - 1, rect.w, 1),
+        if checked { theme.accent } else { theme.border },
+    );
+    fill_rect(
+        pixmap,
+        Rect::new(rect.x, rect.y, 1, rect.h),
+        if checked { theme.accent } else { theme.border },
+    );
+    fill_rect(
+        pixmap,
+        Rect::new(rect.right() - 1, rect.y, 1, rect.h),
+        if checked { theme.accent } else { theme.border },
+    );
+    if checked {
+        fill_rect(
+            pixmap,
+            Rect::new(rect.x + 5, rect.y + 5, rect.w - 10, rect.h - 10),
+            theme.accent,
+        );
+    }
+}
+
+fn draw_logo(pixmap: &mut Pixmap, rect: Rect, accent: Rgba, page: Rgba) {
+    fill_rect(pixmap, rect, accent);
+    fill_rect(
+        pixmap,
+        Rect::new(rect.x + 4, rect.y + 3, rect.w - 8, rect.h - 6),
+        page,
+    );
+    fill_rect(
+        pixmap,
+        Rect::new(rect.x + 7, rect.y + 7, rect.w - 12, 2),
+        accent,
+    );
+    fill_rect(
+        pixmap,
+        Rect::new(rect.x + 7, rect.y + 12, rect.w - 10, 2),
+        accent.with_alpha(190),
+    );
+    fill_rect(
+        pixmap,
+        Rect::new(rect.right() - 6, rect.y, 6, 6),
+        accent.with_alpha(210),
+    );
+}
+
+fn fill_rect(pixmap: &mut Pixmap, rect: Rect, colour: Rgba) {
+    if rect.w <= 0 || rect.h <= 0 {
+        return;
+    }
+    let mut builder = PathBuilder::new();
+    builder.move_to(rect.x as f32, rect.y as f32);
+    builder.line_to(rect.right() as f32, rect.y as f32);
+    builder.line_to(rect.right() as f32, rect.bottom() as f32);
+    builder.line_to(rect.x as f32, rect.bottom() as f32);
+    builder.close();
+    if let Some(path) = builder.finish() {
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(colour.r, colour.g, colour.b, colour.a));
+        pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+}
+
+fn fill_circle(pixmap: &mut Pixmap, x: f32, y: f32, radius: f32, colour: Rgba) {
+    let mut builder = PathBuilder::new();
+    builder.push_circle(x, y, radius);
+    if let Some(path) = builder.finish() {
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(colour.r, colour.g, colour.b, colour.a));
+        pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+}
+
+fn blend(pixmap: &mut Pixmap, x: i32, y: i32, colour: Rgba, alpha: u8) {
+    if x < 0 || y < 0 || x >= pixmap.width() as i32 || y >= pixmap.height() as i32 {
+        return;
+    }
+    let index = (y as usize * pixmap.width() as usize + x as usize) * 4;
+    let data = pixmap.data_mut();
+    let inverse = 255 - u16::from(alpha);
+    data[index] = ((u16::from(colour.r) * u16::from(alpha)
+        + u16::from(data[index]) * inverse)
+        / 255) as u8;
+    data[index + 1] = ((u16::from(colour.g) * u16::from(alpha)
+        + u16::from(data[index + 1]) * inverse)
+        / 255) as u8;
+    data[index + 2] = ((u16::from(colour.b) * u16::from(alpha)
+        + u16::from(data[index + 2]) * inverse)
+        / 255) as u8;
+    data[index + 3] = alpha.max(data[index + 3]);
+}

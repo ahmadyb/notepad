@@ -49,7 +49,7 @@ impl Default for Settings {
             theme: "dark".into(),
             sidebar_open: true,
             show_line_numbers: true,
-            autosave: false,
+            autosave: true,
             autosave_seconds: 30,
             font_family: "DejaVu Sans Mono".into(),
             font_size: 15.0,

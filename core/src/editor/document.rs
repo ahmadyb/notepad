@@ -295,6 +295,22 @@ impl EditorBuffer {
         result
     }
 
+    pub fn set_list_type(&mut self, list_type: ListType) {
+        let (start, end) = self.selected_line_range();
+        self.edit();
+        let last = self.metadata.len().saturating_sub(1);
+        for line in start..=end.min(last) {
+            if let Some(metadata) = self.metadata.get_mut(line) {
+                metadata.list_type = list_type;
+                if list_type == ListType::None {
+                    metadata.checked = false;
+                    metadata.indent = 0;
+                }
+            }
+        }
+        self.finish();
+    }
+
     pub fn recognise_list_prefixes(&mut self, tab_width: usize) {
         self.edit();
         for (index, line) in self.text.split('\n').enumerate() {
