@@ -17,18 +17,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install native window dependencies
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libx11-dev libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
-      - uses: dtolnay/rust-toolchain@1.78.0
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Check Rust formatting availability
-        run: cargo fmt --all || true
+        run: cargo +stable fmt --all || true
       - name: Test
         id: test
         continue-on-error: true
         run: |
           set -o pipefail
-          cargo test --workspace 2>&1 | tee /tmp/notepad-test.log
+          cargo +stable test --workspace 2>&1 | tee /tmp/notepad-test.log
       - name: Publish test diagnostics
         if: steps.test.outcome == 'failure'
         env:
@@ -52,6 +52,6 @@ jobs:
         if: steps.test.outcome == 'failure'
         run: exit 1
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo +stable clippy --workspace --all-targets -- -D warnings
       - name: Release build
-        run: cargo build --release -p notepad-pro
+        run: cargo +stable build --release -p notepad-pro
