@@ -6,4 +6,4 @@ pub type FontSystem = cosmic_text::FontSystem;
 
 #[derive(Debug,Clone,Copy)]
 pub struct TextMetrics{pub size:f32,pub line_height:f32,pub advance:f32}
-impl TextMetrics{pub fn monospace(size:f32)->Self{Self{size,line_height:(size*1.45).ceil(),advance:size*.62}}}
+impl TextMetrics{pub fn monospace(size:f32)->Self{Self{size,line_height:(size*1.45).ceil(),advance:size*0.62}}}

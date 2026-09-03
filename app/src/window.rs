@@ -6,7 +6,7 @@ use crate::ui::find_bar::FindBarState;
 use crate::ui::toolbar::ToolbarAction;
 use rfd::{MessageButtons,MessageDialog,MessageDialogResult};
 #[cfg(windows)]use raw_window_handle::{HasWindowHandle,RawWindowHandle};
-#[cfg(windows)]use std::ffi::c_void;
+use std::ffi::c_void;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -83,7 +83,9 @@ impl NativeApplication {
         let context = softbuffer::Context::new(window.clone())
             .map_err(|error| format!("softbuffer context: {error}"))?;
         let layout = Layout::compute(state.width,state.height,self.controller.get_settings().sidebar_open,false);
-        let scintilla = attach_native_editor(&window,layout);
+        let scintilla = attach_native_editor(&window, layout);
+        let surface = softbuffer::Surface::new(&context, window.clone())
+            .map_err(|error| format!("softbuffer surface: {error}"))?;
         self.window = Some(window);
         self._context = Some(context);
         self.surface = Some(surface);
@@ -95,14 +97,15 @@ impl NativeApplication {
         let Some(window) = self.window.as_ref().cloned() else {
             return;
         };
-        let Some(surface) = self.surface.as_mut() else {
-            return;
-        };
         let size = window.inner_size();
         if size.width == 0 || size.height == 0 {
             return;
         }
-        resize_surface(surface, size.width, size.height);
+        if let Some(surface) = self.surface.as_mut() {
+            resize_surface(surface, size.width, size.height);
+        } else {
+            return;
+        }
         let settings = self.controller.get_settings();
         self.renderer.set_font_size(settings.font_size);
         let layout = Layout::compute(size.width, size.height, settings.sidebar_open, self.find.open);
@@ -122,6 +125,9 @@ impl NativeApplication {
             settings.show_line_numbers,
             self.controller.active_tab_index(),
         ) else {
+            return;
+        };
+        let Some(surface) = self.surface.as_mut() else {
             return;
         };
         let Ok(mut buffer) = surface.buffer_mut() else {
