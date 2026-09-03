@@ -6,6 +6,7 @@ use crate::ui::find_bar::FindBarState;
 use crate::ui::toolbar::ToolbarAction;
 use rfd::{MessageButtons,MessageDialog,MessageDialogResult};
 #[cfg(windows)]use raw_window_handle::{HasWindowHandle,RawWindowHandle};
+#[cfg(windows)]use std::ffi::c_void;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -348,7 +349,7 @@ impl NativeApplication {
                     self.native_text=snapshot.text.clone();
                 }
             }
-            host.direct().configure_indicator(0,(theme.accent.r,theme.accent.g,theme.accent.b),105);
+            host.direct().configure_indicator(0,(theme.caret.r,theme.caret.g,theme.caret.b),105);
             let length=host.direct().get_text().len();
             host.direct().clear_indicator(0,0,length);
             for (line,metadata) in snapshot.metadata.iter().enumerate(){
