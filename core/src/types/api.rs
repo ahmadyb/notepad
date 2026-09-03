@@ -4,8 +4,7 @@ use serde::{Deserialize,Serialize};
 use std::path::PathBuf;
 #[derive(Debug,Clone,PartialEq,Eq,Serialize,Deserialize)]pub struct AppInfo{pub name:String,pub version:String}
 impl Default for AppInfo{fn default()->Self{Self{name:"NotePad Pro".into(),version:"1.0.2-scintilla".into()}}}
-#[derive(Debug,Clone,Copy,PartialEq,Eq,Serialize,Deserialize)]#[serde(rename_all="snake_case")]pub enum ColorOrder{Document,Grouped}
-impl Default for ColorOrder{fn default()->Self{Self::Document}}
+#[derive(Debug,Clone,Copy,PartialEq,Eq,Serialize,Deserialize,Default)]#[serde(rename_all="snake_case")]pub enum ColorOrder{#[default]Document,Grouped}
 pub type ExtractOrder = ColorOrder;
 #[derive(Debug,Clone,PartialEq,Serialize,Deserialize)]pub struct Settings{pub theme:String,pub sidebar_open:bool,pub show_line_numbers:bool,pub autosave:bool,pub autosave_seconds:u64,pub font_family:String,pub font_size:f32,pub tab_width:u8,pub recent_files_limit:usize,pub default_encoding:TextEncoding,pub default_line_ending:LineEnding}
 impl Default for Settings{fn default()->Self{Self{theme:"dark".into(),sidebar_open:true,show_line_numbers:true,autosave:false,autosave_seconds:30,font_family:"DejaVu Sans Mono".into(),font_size:15.0,tab_width:4,recent_files_limit:20,default_encoding:TextEncoding::Utf8,default_line_ending:LineEnding::Lf}}}

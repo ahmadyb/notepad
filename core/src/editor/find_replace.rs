@@ -1,7 +1,6 @@
 use crate::{CoreError,Result};
 use regex::{Regex,RegexBuilder};
-#[derive(Debug,Clone,PartialEq,Eq)]pub struct FindOptions{pub case_sensitive:bool,pub regex:bool,pub whole_word:bool}
-impl Default for FindOptions{fn default()->Self{Self{case_sensitive:false,regex:false,whole_word:false}}}
+#[derive(Debug,Clone,PartialEq,Eq,Default)]pub struct FindOptions{pub case_sensitive:bool,pub regex:bool,pub whole_word:bool}
 #[derive(Debug,Clone,PartialEq,Eq)]pub struct FindMatch{pub start:usize,pub end:usize,pub line:usize,pub column:usize}
 pub fn find_all(text:&str,query:&str,o:&FindOptions)->Result<Vec<FindMatch>>{if query.is_empty(){return Ok(Vec::new())}let regex=compile(query,o)?;Ok(regex.find_iter(text).map(|m|make(text,m.start(),m.end())).collect())}
 pub fn replace_all(text:&str,query:&str,replacement:&str,o:&FindOptions)->Result<(String,usize)>{if query.is_empty(){return Ok((text.to_owned(),0))}let regex=compile(query,o)?;let count=regex.find_iter(text).count();if count==0{return Ok((text.to_owned(),0))}let replaced=if o.regex{regex.replace_all(text,replacement).into_owned()}else{regex.replace_all(text,regex::NoExpand(replacement)).into_owned()};Ok((replaced,count))}
