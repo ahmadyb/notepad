@@ -1,3 +1,71 @@
-use std::env;use std::path::{Path,PathBuf};
-fn main(){println!("cargo:rerun-if-env-changed=NOTEPAD_SCINTILLA_DIR");println!("cargo:rerun-if-env-changed=NOTEPAD_SCINTILLA_STATIC");let windows=env::var_os("CARGO_CFG_WINDOWS").is_some();if !windows{if let Ok(dir)=env::var("NOTEPAD_SCINTILLA_DIR"){let dir=PathBuf::from(dir);if dir.is_dir(){let mut files=Vec::new();for part in ["src","lexlib","lexers"]{collect(&dir.join(part),&mut files)}if !files.is_empty(){let mut b=cc::Build::new();b.cpp(true).warnings(false).flag_if_supported("-std=c++17").include(&dir).include(dir.join("include")).include(dir.join("src")).include(dir.join("lexlib"));for f in files{b.file(f);}b.compile("notepad_scintilla")}}}}if let Ok(lib)=env::var("NOTEPAD_SCINTILLA_STATIC"){if !windows{if let Some(p)=Path::new(&lib).parent(){println!("cargo:rustc-link-search=native={}",p.display())}if let Some(n)=Path::new(&lib).file_stem().and_then(|n|n.to_str()){println!("cargo:rustc-link-lib=static={}",n.strip_prefix("lib").unwrap_or(n))}}}if windows{for l in ["Imm32","Ole32","Uuid","Gdi32","User32","Msimg32"]{println!("cargo:rustc-link-lib=dylib={l}")}}}
-fn collect(p:&Path,out:&mut Vec<PathBuf>){if let Ok(es)=std::fs::read_dir(p){for e in es.flatten(){let p=e.path();if p.is_dir(){collect(&p,out)}else if p.extension().is_some_and(|x|x=="cxx"||x=="cpp"||x=="cc"){out.push(p)}}}}
+use std::env;
+use std::path::{Path, PathBuf};
+
+fn main() {
+    println!("cargo:rerun-if-env-changed=NOTEPAD_SCINTILLA_DIR");
+    println!("cargo:rerun-if-env-changed=NOTEPAD_SCINTILLA_STATIC");
+
+    let windows = env::var_os("CARGO_CFG_WINDOWS").is_some();
+    if !windows {
+        if let Ok(directory) = env::var("NOTEPAD_SCINTILLA_DIR") {
+            let directory = PathBuf::from(directory);
+            if directory.is_dir() {
+                let mut files = Vec::new();
+                for part in ["src", "lexlib", "lexers"] {
+                    collect(&directory.join(part), &mut files);
+                }
+                if !files.is_empty() {
+                    let mut build = cc::Build::new();
+                    build
+                        .cpp(true)
+                        .warnings(false)
+                        .flag_if_supported("-std=c++17")
+                        .include(&directory)
+                        .include(directory.join("include"))
+                        .include(directory.join("src"))
+                        .include(directory.join("lexlib"));
+                    for file in files {
+                        build.file(file);
+                    }
+                    build.compile("notepad_scintilla");
+                }
+            }
+        }
+    }
+
+    if let Ok(library) = env::var("NOTEPAD_SCINTILLA_STATIC") {
+        if !windows {
+            if let Some(directory) = Path::new(&library).parent() {
+                println!("cargo:rustc-link-search=native={}", directory.display());
+            }
+            if let Some(name) = Path::new(&library).file_stem().and_then(|name| name.to_str()) {
+                println!(
+                    "cargo:rustc-link-lib=static={}",
+                    name.strip_prefix("lib").unwrap_or(name)
+                );
+            }
+        }
+    }
+
+    if windows {
+        for library in ["Imm32", "Ole32", "Uuid", "Gdi32", "User32", "Msimg32"] {
+            println!("cargo:rustc-link-lib=dylib={library}");
+        }
+    }
+}
+
+fn collect(path: &Path, output: &mut Vec<PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect(&path, output);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "cxx" || extension == "cpp" || extension == "cc")
+            {
+                output.push(path);
+            }
+        }
+    }
+}
