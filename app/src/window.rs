@@ -469,11 +469,11 @@ impl NativeApplication {
         if query.contains(x, y) {
             self.focus_input(InputFocus::Find);
         } else if previous.contains(x, y) {
-            if let Some(found) = self.find.previous().cloned() {
+            if let Some(found) = self.find.previous_match().cloned() {
                 self.controller.select_find_match(&found);
             }
         } else if next.contains(x, y) {
-            if let Some(found) = self.find.next().cloned() {
+            if let Some(found) = self.find.next_match().cloned() {
                 self.controller.select_find_match(&found);
             }
         } else if toggle_replace.contains(x, y) {
@@ -674,9 +674,9 @@ impl NativeApplication {
             }
             Key::Named(NamedKey::Enter) if self.find.open && self.focus == InputFocus::Find => {
                 let found = if shift {
-                    self.find.previous().cloned()
+                    self.find.previous_match().cloned()
                 } else {
-                    self.find.next().cloned()
+                    self.find.next_match().cloned()
                 };
                 if let Some(found) = found {
                     self.controller.select_find_match(&found);

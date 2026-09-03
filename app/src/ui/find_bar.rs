@@ -51,7 +51,7 @@ impl FindBarState {
         self.current = 0;
     }
 
-    pub fn next(&mut self) -> Option<&FindMatch> {
+    pub fn next_match(&mut self) -> Option<&FindMatch> {
         if self.matches.is_empty() {
             return None;
         }
@@ -59,7 +59,7 @@ impl FindBarState {
         self.matches.get(self.current)
     }
 
-    pub fn previous(&mut self) -> Option<&FindMatch> {
+    pub fn previous_match(&mut self) -> Option<&FindMatch> {
         if self.matches.is_empty() {
             return None;
         }

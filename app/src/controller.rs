@@ -591,7 +591,9 @@ impl AppController {
             } else {
                 state.tabs.push(document);
                 state.active_tab = state.tabs.len() - 1;
-                self.note_ids.lock().ok().map(|mut ids| ids.push(None));
+                if let Ok(mut ids) = self.note_ids.lock() {
+                    ids.push(None);
+                }
             }
         }
         if replaced_empty {
