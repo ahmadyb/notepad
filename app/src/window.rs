@@ -37,6 +37,7 @@ struct NativeApplication {
     renderer: ChromeRenderer,
     find: FindBarState,
     modifiers: ModifiersState,
+    ime_enabled: bool,
     pointer: (i32, i32),
     last_redraw: Instant,
     last_autosave: Instant,
@@ -57,6 +58,7 @@ impl NativeApplication {
             renderer: ChromeRenderer::new(),
             find: FindBarState::default(),
             modifiers: ModifiersState::empty(),
+            ime_enabled: true,
             pointer: (0, 0),
             last_redraw: Instant::now(),
             last_autosave: Instant::now(),
@@ -83,6 +85,7 @@ impl NativeApplication {
         if state.maximized {
             window.set_maximized(true);
         }
+        window.set_ime_allowed(true);
         let context = softbuffer::Context::new(window.clone())
             .map_err(|error| format!("softbuffer context: {error}"))?;
         let layout = Layout::compute(state.width,state.height,self.controller.get_settings().sidebar_open,false);
@@ -170,14 +173,28 @@ impl NativeApplication {
             }
             HitTarget::Editor if button == MouseButton::Left => {
                 if let Some(snapshot) = self.controller.active_snapshot() {
-                    let cursor = hit_cursor(
-                        &snapshot,
-                        layout,
-                        self.pointer.0,
-                        self.pointer.1,
-                        settings.font_size,
+                    let line_height = (settings.font_size * 1.55).ceil() as i32;
+                    let line = ((self.pointer.1 - layout.editor.y - 8).max(0)
+                        / line_height.max(1)) as usize;
+                    let margin = Layout::line_number_width(
+                        snapshot.text.split('\n').count(),
+                        (settings.font_size * 0.62) as i32,
                     );
-                    self.controller.set_active_cursor(cursor, false);
+                    let in_marker = self.pointer.0 < layout.editor.x + margin;
+                    if in_marker && snapshot.metadata.get(line).is_some_and(|metadata| {
+                        metadata.list_type == notepad_core::ListType::Check
+                    }) {
+                        self.controller.toggle_checkbox(line);
+                    } else {
+                        let cursor = hit_cursor(
+                            &snapshot,
+                            layout,
+                            self.pointer.0,
+                            self.pointer.1,
+                            settings.font_size,
+                        );
+                        self.controller.set_active_cursor(cursor, false);
+                    }
                 }
             }
             HitTarget::TabBar if button == MouseButton::Left => {
@@ -217,6 +234,7 @@ impl NativeApplication {
 
     fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: &Key) {
         let control = self.modifiers.control_key() || self.modifiers.super_key();
+        let shift = self.modifiers.shift_key();
         match key {
             Key::Named(NamedKey::Escape) => self.find.open = false,
             Key::Named(NamedKey::Enter) if self.find.open => {
@@ -225,13 +243,34 @@ impl NativeApplication {
                 }
             }
             Key::Named(NamedKey::Enter) => self.controller.handle_enter(),
-            Key::Named(NamedKey::Backspace) if self.find.open => {self.find.query.pop();if let Some(snapshot)=self.controller.active_snapshot(){let _=self.find.refresh(&snapshot.text);}}
-            Key::Named(NamedKey::Delete) if self.find.open => {self.find.query.clear();if let Some(snapshot)=self.controller.active_snapshot(){let _=self.find.refresh(&snapshot.text);}}
+            Key::Named(NamedKey::Backspace) if self.find.open => {
+                self.find.query.pop();
+                if let Some(snapshot) = self.controller.active_snapshot() {
+                    let _ = self.find.refresh(&snapshot.text);
+                }
+            }
+            Key::Named(NamedKey::Delete) if self.find.open => {
+                self.find.query.clear();
+                if let Some(snapshot) = self.controller.active_snapshot() {
+                    let _ = self.find.refresh(&snapshot.text);
+                }
+            }
             Key::Named(NamedKey::Backspace) => self.controller.delete_backward(),
             Key::Named(NamedKey::Delete) => self.controller.delete_forward(),
-            Key::Named(NamedKey::Tab) => self.controller.handle_tab(self.modifiers.shift_key()),
-            Key::Named(NamedKey::ArrowLeft) => move_horizontal(&self.controller, -1),
-            Key::Named(NamedKey::ArrowRight) => move_horizontal(&self.controller, 1),
+            Key::Named(NamedKey::Tab) => self.controller.handle_tab(shift),
+            Key::Named(NamedKey::ArrowLeft) => {
+                self.controller.move_active_cursor(-1, false, shift)
+            }
+            Key::Named(NamedKey::ArrowRight) => {
+                self.controller.move_active_cursor(1, false, shift)
+            }
+            Key::Named(NamedKey::ArrowUp) => self.controller.move_active_cursor(-1, true, shift),
+            Key::Named(NamedKey::ArrowDown) => self.controller.move_active_cursor(1, true, shift),
+            Key::Named(NamedKey::Home) => self.controller.move_active_line_start(shift),
+            Key::Named(NamedKey::End) => self.controller.move_active_line_end(shift),
+            Key::Character(value) if control && value.as_str().eq_ignore_ascii_case("a") => {
+                self.controller.select_all();
+            }
             Key::Character(value) if control && value.as_str().eq_ignore_ascii_case("n") => {
                 self.controller.new_tab();
             }
@@ -261,11 +300,25 @@ impl NativeApplication {
                     let _ = self.controller.copy_to_clipboard(text);
                 }
             }
+            Key::Character(value) if control && value.as_str().eq_ignore_ascii_case("x") => {
+                if let Some(text) = self.controller.selected_text() {
+                    let _ = self.controller.copy_to_clipboard(text);
+                    self.controller.delete_backward();
+                }
+            }
             Key::Character(value) if control && value.as_str().eq_ignore_ascii_case("v") => {
-                if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                    if let Ok(text) = clipboard.get_text() {
-                        self.controller.replace_selection(&text);
+                if let Ok(Some(text)) = self.controller.paste_from_clipboard() {
+                    self.controller.replace_selection(&text);
+                }
+            }
+            Key::Character(value) if !control && !self.modifiers.alt_key() && !self.ime_enabled => {
+                if self.find.open {
+                    self.find.query.push_str(value.as_str());
+                    if let Some(snapshot) = self.controller.active_snapshot() {
+                        let _ = self.find.refresh(&snapshot.text);
                     }
+                } else {
+                    self.controller.insert_text(value.as_str());
                 }
             }
             _ => {}
@@ -361,7 +414,10 @@ impl ApplicationHandler for NativeApplication {
                 button,
                 ..
             } => self.handle_mouse(event_loop, button),
+            WindowEvent::Ime(Ime::Enabled) => self.ime_enabled = true,
+            WindowEvent::Ime(Ime::Disabled) => self.ime_enabled = false,
             WindowEvent::Ime(Ime::Commit(text)) => {
+                self.ime_enabled = true;
                 if self.find.open {
                     self.find.query.push_str(&text);
                     if let Some(snapshot) = self.controller.active_snapshot() {
@@ -429,23 +485,4 @@ fn hit_cursor(snapshot: &EditorSnapshot, layout: Layout, x: i32, y: i32, size: f
         position = start + index + character.len_utf8();
     }
     position.min(snapshot.text.len())
-}
-
-fn move_horizontal(controller: &AppController, direction: i32) {
-    let Some(snapshot) = controller.active_snapshot() else {
-        return;
-    };
-    let position = if direction < 0 {
-        snapshot.text[..snapshot.cursor]
-            .char_indices()
-            .next_back()
-            .map_or(0, |(index, _)| index)
-    } else {
-        snapshot.cursor
-            + snapshot.text[snapshot.cursor..]
-                .chars()
-                .next()
-                .map_or(0, char::len_utf8)
-    };
-    controller.set_active_cursor(position, false);
 }
