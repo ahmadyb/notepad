@@ -14,6 +14,12 @@ $Msi = Join-Path $Artifacts 'NotePad-Pro-1.0.2.msi'
 New-Item -ItemType Directory -Force -Path $Publish, $Artifacts | Out-Null
 
 Write-Host "Building NotePad Pro for $Target"
+if ($Target -match 'msvc') {
+    $existingCxxFlags = if ($env:CXXFLAGS) { $env:CXXFLAGS } else { '' }
+    if ($existingCxxFlags -notmatch '/std:c\+\+17') {
+        $env:CXXFLAGS = "$existingCxxFlags /std:c++17".Trim()
+    }
+}
 & cargo build --release --target $Target --manifest-path $Manifest -p notepad-pro
 if ($LASTEXITCODE -ne 0) {
     throw "cargo build failed with exit code $LASTEXITCODE"

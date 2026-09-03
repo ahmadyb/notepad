@@ -84,6 +84,8 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    env:
+      CXXFLAGS: /std:c++17
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
