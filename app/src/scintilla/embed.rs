@@ -26,6 +26,7 @@ impl std::error::Error for EmbedError {}
 #[cfg(windows)]
 pub struct ScintillaHost {
     hwnd: *mut c_void,
+    parent: *mut c_void,
     direct: DirectEditor,
 }
 
@@ -84,7 +85,11 @@ impl ScintillaHost {
         let direct = unsafe { DirectEditor::from_raw(function, pointer) }.ok_or_else(|| {
             EmbedError::NativeCallFailed("Scintilla direct calls unavailable".into())
         })?;
-        Ok(Self { hwnd, direct })
+        Ok(Self {
+            hwnd,
+            parent,
+            direct,
+        })
     }
 
     pub fn direct(&self) -> &DirectEditor {
@@ -108,6 +113,12 @@ impl ScintillaHost {
     pub fn focus(&self) {
         unsafe {
             SetFocus(self.hwnd);
+        }
+    }
+
+    pub fn focus_parent(&self) {
+        unsafe {
+            SetFocus(self.parent);
         }
     }
 }

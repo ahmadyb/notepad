@@ -63,10 +63,11 @@ impl Default for Settings {
 
 impl Settings {
     pub fn validate(&self) -> std::result::Result<(), String> {
-        const THEMES: [&str; 7] = [
+        const THEMES: [&str; 8] = [
             "light",
             "dark",
             "glass_dark",
+            "liquid",
             "clay_light",
             "clay_dark",
             "neumorphic_light",

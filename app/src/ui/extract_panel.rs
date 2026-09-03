@@ -7,6 +7,7 @@ pub struct ExtractPanelState {
     pub bounds: Rect,
     pub selected_colours: Vec<LineColour>,
     pub available_colours: Vec<(LineColour, usize)>,
+    pub selection_initialized: bool,
     pub order: ColorOrder,
     pub preview: String,
     pub copied: bool,
@@ -19,6 +20,7 @@ impl Default for ExtractPanelState {
             bounds: Rect::default(),
             selected_colours: Vec::new(),
             available_colours: Vec::new(),
+            selection_initialized: false,
             order: ColorOrder::Document,
             preview: String::new(),
             copied: false,
@@ -29,8 +31,9 @@ impl Default for ExtractPanelState {
 impl ExtractPanelState {
     pub fn set_available(&mut self, colours: &[(LineColour, usize)]) {
         self.available_colours = colours.to_vec();
-        if self.selected_colours.is_empty() {
+        if !self.selection_initialized {
             self.selected_colours = colours.iter().map(|(colour, _)| *colour).collect();
+            self.selection_initialized = true;
         } else {
             self.selected_colours
                 .retain(|colour| colours.iter().any(|(available, _)| available == colour));
@@ -43,15 +46,18 @@ impl ExtractPanelState {
         } else {
             self.selected_colours.push(colour);
         }
+        self.selection_initialized = true;
         self.copied = false;
     }
 
     pub fn select_all(&mut self) {
+        self.selection_initialized = true;
         self.selected_colours = self.available_colours.iter().map(|(colour, _)| *colour).collect();
     }
 
     pub fn clear_selection(&mut self) {
         self.selected_colours.clear();
+        self.selection_initialized = true;
     }
 
     pub fn selected(&self, colour: LineColour) -> bool {

@@ -47,6 +47,7 @@ impl ChromeRenderer {
         find: &FindBarState,
         extract: &ExtractPanelState,
         sidebar_query: &str,
+        sidebar_focused: bool,
         show_line_numbers: bool,
         active_tab: usize,
         pointer: (i32, i32),
@@ -64,7 +65,15 @@ impl ChromeRenderer {
         if find.open {
             self.find(&mut pixmap, layout, theme, find, pointer);
         }
-        self.sidebar(&mut pixmap, layout, theme, notes, sidebar_query, pointer);
+        self.sidebar(
+            &mut pixmap,
+            layout,
+            theme,
+            notes,
+            sidebar_query,
+            sidebar_focused,
+            pointer,
+        );
         self.editor(
             &mut pixmap,
             layout,
@@ -366,6 +375,7 @@ impl ChromeRenderer {
         theme: Theme,
         notes: &[Note],
         query: &str,
+        focused: bool,
         pointer: (i32, i32),
     ) {
         if !layout.sidebar_open || layout.sidebar.w <= 0 {
@@ -394,7 +404,7 @@ impl ChromeRenderer {
             layout.sidebar.w - 24,
             30,
         );
-        input_box(pixmap, search, theme, false);
+        input_box(pixmap, search, theme, focused);
         let search_text = if query.is_empty() {
             "⌕  Search notes…".to_owned()
         } else {

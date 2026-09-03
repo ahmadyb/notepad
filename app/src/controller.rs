@@ -174,6 +174,7 @@ pub struct AppController {
     session_store: SessionStore,
     notes: NotesStore,
     settings: RwLock<Settings>,
+    word_wrap: RwLock<bool>,
     recent: Mutex<Vec<PathBuf>>,
     startup: Mutex<Vec<PathBuf>>,
     state: Mutex<AppState>,
@@ -204,6 +205,10 @@ impl AppController {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
+        let word_wrap = fs::read(dir.join("word-wrap.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or(false);
         let window = session_store
             .load()
             .map(|session| session.window)
@@ -214,6 +219,7 @@ impl AppController {
             session_store,
             notes: NotesStore::open(dir.join("notes.sqlite"))?,
             settings: RwLock::new(settings),
+            word_wrap: RwLock::new(word_wrap),
             recent: Mutex::new(recent),
             startup: Mutex::new(Vec::new()),
             state: Mutex::new(AppState::default()),
@@ -300,6 +306,20 @@ impl AppController {
         settings.show_line_numbers = show;
         let _ = self.save_settings(settings.clone());
         settings
+    }
+
+    pub fn word_wrap(&self) -> bool {
+        self.word_wrap.read().map(|value| *value).unwrap_or(false)
+    }
+
+    pub fn toggle_word_wrap(&self) -> bool {
+        let mut value = self.word_wrap.write().expect("word-wrap lock poisoned");
+        *value = !*value;
+        let _ = fs::write(
+            self.data_dir.join("word-wrap.json"),
+            serde_json::to_vec(&*value).unwrap_or_default(),
+        );
+        *value
     }
 
     pub fn get_recent_files(&self) -> Vec<String> {
@@ -439,7 +459,15 @@ impl AppController {
     }
 
     pub fn delete_note(&self, id: i64) -> Result<()> {
-        self.notes.delete_note(id)
+        self.notes.delete_note(id)?;
+        if let Ok(mut ids) = self.note_ids.lock() {
+            for value in ids.iter_mut() {
+                if *value == Some(id) {
+                    *value = None;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn toggle_pin(&self, id: i64) -> Result<bool> {
@@ -974,10 +1002,20 @@ impl AppController {
         if !self.get_settings().autosave {
             return Ok(false);
         }
-        if !self.active_is_dirty() {
-            return Ok(false);
+        let original = self.active_tab_index();
+        let mut saved_any = false;
+        for index in 0..self.tab_count() {
+            if !self.tab_is_dirty(index) || !self.switch_tab(index) {
+                continue;
+            }
+            if self.save_active_note().is_ok() {
+                saved_any = true;
+            }
         }
-        self.save_active_note().map(|_| true)
+        if self.tab_count() > 0 {
+            self.switch_tab(original.min(self.tab_count() - 1));
+        }
+        Ok(saved_any)
     }
 
     pub fn save_active_note(&self) -> Result<i64> {
@@ -1007,13 +1045,22 @@ impl AppController {
             };
             (index, id, data)
         };
+        let pinned = if id > 0 {
+            self.notes
+                .get_note(id)?
+                .map(|note| note.pinned)
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        let mut data = data;
+        data.pinned = pinned;
         let saved_id = self.notes.save_note(&data)?;
         if let Ok(mut ids) = self.note_ids.lock() {
             if let Some(slot) = ids.get_mut(index) {
                 *slot = Some(saved_id);
             }
         }
-        let _ = id;
         Ok(saved_id)
     }
 
@@ -1104,14 +1151,6 @@ impl AppController {
         }
         self.remember(&path);
         Ok(true)
-    }
-
-    fn active_is_dirty(&self) -> bool {
-        self.state
-            .lock()
-            .ok()
-            .and_then(|state| state.active().map(|document| document.dirty))
-            .unwrap_or(false)
     }
 
     fn note_id(&self, index: usize) -> Option<i64> {

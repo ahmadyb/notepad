@@ -28,28 +28,28 @@ pub enum ToolbarAction {
 
 pub fn buttons(layout: Layout) -> Vec<(Button, ToolbarAction)> {
     let mut buttons = Vec::new();
-    let mut x = 10;
+    let mut x = 8;
     let y = layout.toolbar.y + 8;
     let items = [
-        ("New", ToolbarAction::New, 54),
-        ("Open", ToolbarAction::Open, 58),
-        ("Save", ToolbarAction::Save, 58),
-        ("Save as", ToolbarAction::SaveAs, 68),
-        ("Undo", ToolbarAction::Undo, 58),
-        ("Redo", ToolbarAction::Redo, 58),
-        ("Find", ToolbarAction::Find, 58),
-        ("Replace", ToolbarAction::Replace, 72),
-        ("Extract", ToolbarAction::Extract, 70),
-        ("Notes", ToolbarAction::Notes, 62),
-        ("Wrap", ToolbarAction::Wrap, 58),
-        ("A−", ToolbarAction::ZoomOut, 40),
-        ("A+", ToolbarAction::ZoomIn, 40),
-        ("Theme", ToolbarAction::Theme, 64),
-        ("•", ToolbarAction::BulletList, 32),
-        ("1.", ToolbarAction::NumberedList, 32),
-        ("☐", ToolbarAction::Checklist, 32),
-        ("⇤", ToolbarAction::Outdent, 32),
-        ("⇥", ToolbarAction::Indent, 32),
+        ("New", ToolbarAction::New, 46),
+        ("Open", ToolbarAction::Open, 48),
+        ("Save", ToolbarAction::Save, 48),
+        ("Save as", ToolbarAction::SaveAs, 58),
+        ("Undo", ToolbarAction::Undo, 46),
+        ("Redo", ToolbarAction::Redo, 46),
+        ("Find", ToolbarAction::Find, 46),
+        ("Replace", ToolbarAction::Replace, 62),
+        ("Extract", ToolbarAction::Extract, 60),
+        ("Notes", ToolbarAction::Notes, 52),
+        ("Wrap", ToolbarAction::Wrap, 50),
+        ("A−", ToolbarAction::ZoomOut, 34),
+        ("A+", ToolbarAction::ZoomIn, 34),
+        ("Theme", ToolbarAction::Theme, 52),
+        ("•", ToolbarAction::BulletList, 28),
+        ("1.", ToolbarAction::NumberedList, 28),
+        ("☐", ToolbarAction::Checklist, 28),
+        ("⇤", ToolbarAction::Outdent, 28),
+        ("⇥", ToolbarAction::Indent, 28),
     ];
     for (label, action, width) in items {
         if x + width > layout.toolbar.right() - 8 {

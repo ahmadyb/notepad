@@ -6,7 +6,7 @@ use crate::ui::extract_panel::ExtractPanelState;
 use crate::ui::find_bar::{FindBarState, FindField};
 use crate::ui::sidebar::{NoteAction, SidebarState};
 use crate::ui::toolbar::ToolbarAction;
-use notepad_core::{ColorOrder, ListType};
+use notepad_core::{ColorOrder, LineColour, ListType};
 use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
 #[cfg(windows)]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -55,6 +55,8 @@ struct NativeApplication {
     focus: InputFocus,
     modifiers: ModifiersState,
     pointer: (i32, i32),
+    mouse_down: bool,
+    drag_anchor: usize,
     last_redraw: Instant,
     last_autosave: Instant,
 }
@@ -78,6 +80,8 @@ impl NativeApplication {
             focus: InputFocus::Editor,
             modifiers: ModifiersState::empty(),
             pointer: (0, 0),
+            mouse_down: false,
+            drag_anchor: 0,
             last_redraw: Instant::now(),
             last_autosave: Instant::now(),
         }
@@ -198,6 +202,7 @@ impl NativeApplication {
             &self.find,
             &self.extract,
             &self.sidebar.query,
+            self.focus == InputFocus::Sidebar,
             settings.show_line_numbers,
             self.controller.active_tab_index(),
             self.pointer,
@@ -236,6 +241,12 @@ impl NativeApplication {
                 self.find.focus = FindField::Replacement;
             }
             InputFocus::Editor | InputFocus::Sidebar => {}
+        }
+        #[cfg(windows)]
+        if !matches!(focus, InputFocus::Editor) {
+            if let Some(host) = self.scintilla.as_ref() {
+                host.focus_parent();
+            }
         }
         if let Some(window) = self.window.as_ref() {
             window.request_redraw();
@@ -299,6 +310,8 @@ impl NativeApplication {
         } else {
             let cursor = hit_cursor(&snapshot, layout, x, y, settings.font_size);
             self.controller.set_active_cursor(cursor, false);
+            self.drag_anchor = cursor;
+            self.mouse_down = true;
         }
         #[cfg(windows)]
         if let Some(host) = self.scintilla.as_ref() {
@@ -425,13 +438,7 @@ impl NativeApplication {
                     self.controller.toggle_sidebar();
                 }
                 ToolbarAction::Wrap => {
-                    let settings = self.controller.get_settings();
-                    let _ = self
-                        .controller
-                        .update_settings("show_line_numbers", serde_json::json!(settings.show_line_numbers));
-                    // Word wrapping is also applied by the native editor style on
-                    // Windows; this action remains a visible, harmless toggle point
-                    // for the software renderer until a wrapped layout is needed.
+                    self.controller.toggle_word_wrap();
                 }
                 ToolbarAction::ZoomOut => {
                     self.controller.adjust_font_size(-1.0);
@@ -814,6 +821,7 @@ impl NativeApplication {
                 layout.editor.h.max(1),
             );
             let scintilla_theme = self.controller.theme().scintilla();
+            let settings = self.controller.get_settings();
             host.direct().set_colours(
                 (
                     scintilla_theme.foreground.r,
@@ -831,12 +839,16 @@ impl NativeApplication {
                     scintilla_theme.caret.b,
                 ),
             );
+            host.direct().set_font(&settings.font_family, settings.font_size);
+            host.direct().set_word_wrap(self.controller.word_wrap());
             let tab = self.controller.active_tab_index();
             let Some(snapshot) = self.controller.active_snapshot() else {
                 return;
             };
             if self.native_tab != tab {
                 host.direct().set_text(&snapshot.text);
+                host.direct()
+                    .set_selection(snapshot.selection.anchor, snapshot.selection.caret);
                 self.native_text = snapshot.text.clone();
                 self.native_tab = tab;
             } else {
@@ -846,26 +858,26 @@ impl NativeApplication {
                     self.native_text = native;
                 } else if snapshot.text != self.native_text {
                     host.direct().set_text(&snapshot.text);
+                    host.direct()
+                        .set_selection(snapshot.selection.anchor, snapshot.selection.caret);
                     self.native_text = snapshot.text.clone();
                 }
+                self.controller.set_active_selection(
+                    host.direct().get_anchor(),
+                    host.direct().get_current_pos(),
+                );
             }
-            host.direct().configure_indicator(
-                0,
-                (
-                    scintilla_theme.caret.r,
-                    scintilla_theme.caret.g,
-                    scintilla_theme.caret.b,
-                ),
-                105,
-            );
             let length = host.direct().get_text().len();
-            host.direct().clear_indicator(0, 0, length);
+            for slot in 0..7 {
+                host.direct().clear_indicator(slot, 0, length);
+            }
             for (line, metadata) in snapshot.metadata.iter().enumerate() {
                 if let Some(rgb) = metadata.colour.rgb() {
+                    let slot = indicator_slot(metadata.colour);
                     let line_colour = ((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
-                    host.direct().configure_indicator(0, line_colour, 105);
+                    host.direct().configure_indicator(slot, line_colour, 105);
                     host.direct().set_indicator_range(
-                        0,
+                        slot,
                         host.direct().line_start(line),
                         host.direct().line_length(line),
                     );
@@ -957,6 +969,21 @@ impl ApplicationHandler for NativeApplication {
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.pointer = (position.x as i32, position.y as i32);
+                if self.mouse_down && self.focus == InputFocus::Editor {
+                    let size = self.window.as_ref().map(|window| window.inner_size());
+                    if let (Some(size), Some(snapshot)) = (size, self.controller.active_snapshot()) {
+                        let layout = self.current_layout(size.width, size.height);
+                        let settings = self.controller.get_settings();
+                        let cursor = hit_cursor(
+                            &snapshot,
+                            layout,
+                            self.pointer.0,
+                            self.pointer.1,
+                            settings.font_size,
+                        );
+                        self.controller.set_active_selection(self.drag_anchor, cursor);
+                    }
+                }
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
                 }
@@ -966,6 +993,11 @@ impl ApplicationHandler for NativeApplication {
                 button,
                 ..
             } => self.handle_mouse(event_loop, button),
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
+            } => self.mouse_down = false,
             WindowEvent::Ime(Ime::Commit(text)) => {
                 if !text.is_empty() {
                     self.insert_input_text(&text);
@@ -989,7 +1021,10 @@ impl ApplicationHandler for NativeApplication {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         let settings = self.controller.get_settings();
         if settings.autosave
-            && self.last_autosave.elapsed() >= Duration::from_secs(settings.autosave_seconds)
+            // Notes are cheap SQLite rows.  A short idle debounce makes the
+            // sidebar useful immediately, while the setting still provides a
+            // genuine opt-out for users who do not want background writes.
+            && self.last_autosave.elapsed() >= Duration::from_millis(750)
         {
             let _ = self.controller.autosave();
             self.last_autosave = Instant::now();
@@ -1037,6 +1072,19 @@ fn resize_surface(
         NonZeroU32::new(width.max(1)).expect("nonzero width"),
         NonZeroU32::new(height.max(1)).expect("nonzero height"),
     );
+}
+
+fn indicator_slot(colour: LineColour) -> usize {
+    match colour {
+        LineColour::Yellow => 0,
+        LineColour::Green => 1,
+        LineColour::Pink => 2,
+        LineColour::Blue => 3,
+        LineColour::Orange => 4,
+        LineColour::Purple => 5,
+        LineColour::Custom(_) => 6,
+        LineColour::None => 0,
+    }
 }
 
 fn hit_cursor(snapshot: &EditorSnapshot, layout: Layout, x: i32, y: i32, size: f32) -> usize {

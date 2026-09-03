@@ -93,6 +93,30 @@ impl DirectEditor {
         self.send(ffi::SCI_STYLECLEARALL, 0, 0);
     }
 
+    pub fn set_word_wrap(&self, enabled: bool) {
+        self.send(
+            ffi::SCI_SETWRAPMODE,
+            if enabled {
+                ffi::SC_WRAP_WORD as usize
+            } else {
+                ffi::SC_WRAP_NONE as usize
+            },
+            0,
+        );
+    }
+
+    pub fn get_current_pos(&self) -> usize {
+        self.send(ffi::SCI_GETCURRENTPOS, 0, 0).max(0) as usize
+    }
+
+    pub fn get_anchor(&self) -> usize {
+        self.send(ffi::SCI_GETANCHOR, 0, 0).max(0) as usize
+    }
+
+    pub fn set_selection(&self, anchor: usize, caret: usize) {
+        self.send(ffi::SCI_SETSEL, anchor, caret as Sptr);
+    }
+
     pub fn replace_selection(&self, text: &str) {
         let text = c_string(text);
         self.send(ffi::SCI_REPLACESEL, 0, text.as_ptr() as Sptr);
