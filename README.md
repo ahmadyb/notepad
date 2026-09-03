@@ -4,7 +4,7 @@ NotePad Pro 1.0.2-scintilla is a native Rust note editor. The workspace has a he
 
 ## Build
 
-Rust 1.78 or newer is required. On Linux:
+The project uses the current stable Rust toolchain. On Linux:
 
 ```bash
 cargo test --workspace
@@ -22,11 +22,13 @@ $env:NOTEPAD_TARGET = 'x86_64-pc-windows-msvc'
 ./packaging/build-windows.ps1
 ```
 
-That produces `artifacts/NotePad-Pro-1.0.2.msi`. No browser engine or web runtime is included. The shell uses a software editor surface on backends that cannot host a Scintilla child window; Windows uses the target-specific static Scintilla child host. On Unix distributors may provide a compatible Scintilla source tree or static archive through `NOTEPAD_SCINTILLA_DIR` or `NOTEPAD_SCINTILLA_STATIC` for the optional build bridge.
+That produces `target\release\windows-package\notepad-pro.exe` and `artifacts\NotePad-Pro-1.0.2.msi`. No browser engine or web runtime is included. The shell uses a software editor surface on backends that cannot host a Scintilla child window; Windows uses the target-specific static Scintilla child host. On Unix distributors may provide a compatible Scintilla source tree or static archive through `NOTEPAD_SCINTILLA_DIR` or `NOTEPAD_SCINTILLA_STATIC` for the optional build bridge.
+
+The `Package Windows` GitHub Actions workflow builds and smoke-checks the Windows release executable, creates the WiX MSI, and uploads both files as a downloadable workflow artifact. It runs for pushes to the repository and can also be started manually.
 
 ## Verification
 
-The GitHub workflow runs the native Linux test, clippy, and release-build checks on stable Rust; the source remains compatible with the pinned Rust 1.78 baseline where dependency versions permit it. Core persistence and editor behavior are also covered by integration tests.
+The GitHub workflows run the native Linux and Windows tests, clippy, release builds, and Windows installer packaging on stable Rust. Core persistence and editor behaviour are also covered by integration tests.
 
 ## CLI
 

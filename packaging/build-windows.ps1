@@ -1,18 +1,48 @@
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
 $Root = Split-Path -Parent $PSScriptRoot
 $Target = if ($env:NOTEPAD_TARGET) { $env:NOTEPAD_TARGET } else { 'x86_64-pc-windows-msvc' }
+$Release = Join-Path $Root "target\$Target\release"
 $Publish = Join-Path $Root 'target\release\windows-package'
 $Artifacts = Join-Path $Root 'artifacts'
-New-Item -ItemType Directory -Force $Publish, $Artifacts | Out-Null
-cargo build --release --target $Target --manifest-path (Join-Path $Root 'Cargo.toml') -p notepad-pro
-Copy-Item (Join-Path $Root "target\$Target\release\notepad-pro.exe") (Join-Path $Publish 'notepad-pro.exe') -Force
-$env:PublishDir = $Publish
-if (Get-Command wix -ErrorAction SilentlyContinue) {
-  wix build -d PublishDir=$Publish (Join-Path $PSScriptRoot 'notepad-pro.wxs') -o (Join-Path $Artifacts 'NotePad-Pro-1.0.2.msi')
-} elseif (Get-Command candle -ErrorAction SilentlyContinue) {
-  candle -dPublishDir=$Publish -o (Join-Path $Publish 'notepad-pro.wixobj') (Join-Path $PSScriptRoot 'notepad-pro.wxs')
-  light -o (Join-Path $Artifacts 'NotePad-Pro-1.0.2.msi') (Join-Path $Publish 'notepad-pro.wixobj')
-} else {
-  throw 'WiX Toolset 4 (wix) is required to create the MSI installer.'
+$Manifest = Join-Path $Root 'Cargo.toml'
+$WixSource = Join-Path $PSScriptRoot 'notepad-pro.wxs'
+$Exe = Join-Path $Release 'notepad-pro.exe'
+$Msi = Join-Path $Artifacts 'NotePad-Pro-1.0.2.msi'
+
+New-Item -ItemType Directory -Force -Path $Publish, $Artifacts | Out-Null
+
+Write-Host "Building NotePad Pro for $Target"
+& cargo build --release --target $Target --manifest-path $Manifest -p notepad-pro
+if ($LASTEXITCODE -ne 0) {
+    throw "cargo build failed with exit code $LASTEXITCODE"
 }
-Write-Host "Created $Artifacts\NotePad-Pro-1.0.2.msi"
+if (-not (Test-Path -LiteralPath $Exe)) {
+    throw "Release executable was not created: $Exe"
+}
+
+Copy-Item -LiteralPath $Exe -Destination (Join-Path $Publish 'notepad-pro.exe') -Force
+
+$Wix = Get-Command wix -ErrorAction SilentlyContinue
+if ($null -eq $Wix) {
+    throw 'WiX Toolset 4 (wix.exe) is required to create the MSI installer.'
+}
+
+Write-Host 'Creating MSI installer'
+& $Wix.Source build `
+    -arch x64 `
+    -d "PublishDir=$Publish" `
+    $WixSource `
+    -o $Msi
+if ($LASTEXITCODE -ne 0) {
+    throw "WiX build failed with exit code $LASTEXITCODE"
+}
+if (-not (Test-Path -LiteralPath $Msi)) {
+    throw "MSI installer was not created: $Msi"
+}
+
+$exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Publish 'notepad-pro.exe')).Hash
+$msiHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Msi).Hash
+Write-Host "Created $Publish\notepad-pro.exe ($exeHash)"
+Write-Host "Created $Msi ($msiHash)"

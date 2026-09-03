@@ -1,13 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="NotePad Pro" Manufacturer="NotePad Pro Contributors" Version="1.0.2.0" UpgradeCode="8BFD7E6B-9B2B-4E77-9A2B-1E3F35AD71C5">
+  <Package
+      Name="NotePad Pro"
+      Manufacturer="NotePad Pro Contributors"
+      Version="1.0.2.0"
+      UpgradeCode="8BFD7E6B-9B2B-4E77-9A2B-1E3F35AD71C5">
     <MajorUpgrade DowngradeErrorMessage="A newer version of NotePad Pro is already installed." />
     <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="NotePad Pro" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="NotePad Pro" />
+    </StandardDirectory>
+
     <Feature Id="MainFeature" Title="NotePad Pro" Level="1">
-      <Component Directory="INSTALLFOLDER">
-        <File Source="$(var.PublishDir)\notepad-pro.exe" KeyPath="yes" />
-        <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="NotePad Pro" Target="[INSTALLFOLDER]notepad-pro.exe" WorkingDirectory="INSTALLFOLDER" />
-      </Component>
+      <ComponentRef Id="ApplicationComponent" />
+      <ComponentRef Id="StartMenuComponent" />
     </Feature>
   </Package>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="ApplicationComponent">
+        <File Id="NotepadProExe" Source="$(var.PublishDir)\notepad-pro.exe" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="StartMenuComponent">
+        <Shortcut
+            Id="StartMenuShortcut"
+            Name="NotePad Pro"
+            Description="Native note editor"
+            Target="[#NotepadProExe]"
+            WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+            Root="HKCU"
+            Key="Software\NotePad Pro"
+            Name="Installed"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
 </Wix>
