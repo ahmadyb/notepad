@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   linux:
     runs-on: ubuntu-latest
@@ -20,7 +24,33 @@ jobs:
       - name: Check Rust formatting availability
         run: cargo fmt --all || true
       - name: Test
-        run: cargo test --workspace
+        id: test
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test --workspace 2>&1 | tee /tmp/notepad-test.log
+      - name: Publish test diagnostics
+        if: steps.test.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          log = Path('/tmp/notepad-test.log').read_text(errors='replace')[-60000:]
+          payload = {
+              'name': 'NotePad Pro test diagnostics',
+              'head_sha': '${{ github.sha }}',
+              'status': 'completed',
+              'conclusion': 'failure',
+              'output': {'title': 'cargo test failed', 'summary': log},
+          }
+          Path('/tmp/check.json').write_text(json.dumps(payload))
+          PY
+          gh api repos/${{ github.repository }}/check-runs --method POST --input /tmp/check.json
+      - name: Fail test job after publishing diagnostics
+        if: steps.test.outcome == 'failure'
+        run: exit 1
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Release build
