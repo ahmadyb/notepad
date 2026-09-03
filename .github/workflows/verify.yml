@@ -98,12 +98,95 @@ jobs:
           $env:Path = "$env:USERPROFILE\.dotnet\tools;$env:Path"
           wix --version
       - name: Test
-        run: cargo +stable test --workspace
-      - name: Clippy
-        run: cargo +stable clippy --workspace --all-targets -- -D warnings
-      - name: Package Windows executable and installer
+        id: windows_test
+        continue-on-error: true
         shell: pwsh
-        run: ./packaging/build-windows.ps1
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'notepad-windows-test.log'
+          & cargo +stable test --workspace 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish Windows test diagnostics
+        if: steps.windows_test.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $logPath = Join-Path $env:RUNNER_TEMP 'notepad-windows-test.log'
+          $log = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
+          if ($null -eq $log) { $log = 'Windows cargo test did not produce a log.' }
+          if ($log.Length -gt 60000) { $log = $log.Substring($log.Length - 60000) }
+          $payload = @{
+            name = 'NotePad Pro Windows test diagnostics'
+            head_sha = '${{ github.sha }}'
+            status = 'completed'
+            conclusion = 'failure'
+            output = @{ title = 'Windows cargo test failed'; summary = $log }
+          } | ConvertTo-Json -Depth 5 -Compress
+          $payload | gh api "repos/$env:GITHUB_REPOSITORY/check-runs" --method POST --input -
+      - name: Fail Windows test after publishing diagnostics
+        if: steps.windows_test.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
+      - name: Clippy
+        id: windows_clippy
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'notepad-windows-clippy.log'
+          & cargo +stable clippy --workspace --all-targets -- -D warnings 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish Windows clippy diagnostics
+        if: steps.windows_clippy.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $logPath = Join-Path $env:RUNNER_TEMP 'notepad-windows-clippy.log'
+          $log = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
+          if ($null -eq $log) { $log = 'Windows cargo clippy did not produce a log.' }
+          if ($log.Length -gt 60000) { $log = $log.Substring($log.Length - 60000) }
+          $payload = @{
+            name = 'NotePad Pro Windows clippy diagnostics'
+            head_sha = '${{ github.sha }}'
+            status = 'completed'
+            conclusion = 'failure'
+            output = @{ title = 'Windows cargo clippy failed'; summary = $log }
+          } | ConvertTo-Json -Depth 5 -Compress
+          $payload | gh api "repos/$env:GITHUB_REPOSITORY/check-runs" --method POST --input -
+      - name: Fail Windows clippy after publishing diagnostics
+        if: steps.windows_clippy.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
+      - name: Package Windows executable and installer
+        id: windows_package
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'notepad-windows-package.log'
+          ./packaging/build-windows.ps1 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish Windows packaging diagnostics
+        if: steps.windows_package.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $logPath = Join-Path $env:RUNNER_TEMP 'notepad-windows-package.log'
+          $log = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
+          if ($null -eq $log) { $log = 'Windows packaging did not produce a log.' }
+          if ($log.Length -gt 60000) { $log = $log.Substring($log.Length - 60000) }
+          $payload = @{
+            name = 'NotePad Pro Windows packaging diagnostics'
+            head_sha = '${{ github.sha }}'
+            status = 'completed'
+            conclusion = 'failure'
+            output = @{ title = 'Windows packaging failed'; summary = $log }
+          } | ConvertTo-Json -Depth 5 -Compress
+          $payload | gh api "repos/$env:GITHUB_REPOSITORY/check-runs" --method POST --input -
+      - name: Fail Windows packaging after publishing diagnostics
+        if: steps.windows_package.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
       - name: Smoke-check package outputs
         shell: pwsh
         run: |
