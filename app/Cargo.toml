@@ -27,6 +27,10 @@ serde.workspace = true
 serde_json.workspace = true
 softbuffer = "0.4"
 tiny-skia = "0.11"
+# cosmic-text currently permits tinyvec 1.13, whose no-default-features build
+# fails on the stable toolchain used by the native CI. Keep the transitive
+# renderer dependency on the last compatible release until upstream fixes it.
+tinyvec = "=1.10.0"
 winit = { version = "0.30", default-features = false, features = ["x11", "rwh_06"] }
 
 [target.'cfg(windows)'.dependencies]
