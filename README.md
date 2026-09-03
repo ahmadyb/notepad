@@ -26,7 +26,7 @@ That produces `artifacts/NotePad-Pro-1.0.2.msi`. No browser engine or web runtim
 
 ## Verification
 
-The GitHub workflow runs the native Linux test, clippy, and release-build checks on stable Rust; the source remains compatible with the pinned Rust 1.78 baseline where dependency versions permit it.
+The GitHub workflow runs the native Linux test, clippy, and release-build checks on stable Rust; the source remains compatible with the pinned Rust 1.78 baseline where dependency versions permit it. Core persistence and editor behavior are also covered by integration tests.
 
 ## CLI
 
