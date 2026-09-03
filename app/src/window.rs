@@ -459,7 +459,16 @@ fn attach_native_editor(window:&Window,layout:Layout)->Option<ScintillaHost>{
     {
         let handle=window.window_handle().ok()?.as_raw();
         let parent=match handle{RawWindowHandle::Win32(value)=>value.hwnd.get() as *mut c_void,_=>return None};
-        ScintillaHost::attach(parent,layout.editor.x,layout.editor.y,layout.editor.w.max(1),layout.editor.h.max(1)).ok()
+        unsafe {
+            ScintillaHost::attach(
+                parent,
+                layout.editor.x,
+                layout.editor.y,
+                layout.editor.w.max(1),
+                layout.editor.h.max(1),
+            )
+            .ok()
+        }
     }
     #[cfg(not(windows))]
     {let _=(window,layout);None}

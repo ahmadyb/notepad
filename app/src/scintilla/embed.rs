@@ -34,7 +34,11 @@ pub struct ScintillaHost;
 
 #[cfg(windows)]
 impl ScintillaHost {
-    pub fn attach(
+    /// Attach a Scintilla child window to the supplied Win32 parent window.
+    ///
+    /// # Safety
+    /// `parent` must be a valid live Win32 window handle owned by the current UI thread.
+    pub unsafe fn attach(
         parent: *mut c_void,
         x: i32,
         y: i32,
