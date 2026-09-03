@@ -21,7 +21,7 @@ cosmic-text = { version = "0.12", default-features = false, features = ["std"] }
 directories = "5.0"
 fontdue = "0.9"
 notepad-pro-core = { path = "../core" }
-rfd = { version = "=0.14.1", default-features = false, features = ["xdg-portal"] }
+rfd = { version = "=0.14.1", default-features = false, features = ["gtk3"] }
 raw-window-handle = "0.6"
 serde.workspace = true
 serde_json.workspace = true
