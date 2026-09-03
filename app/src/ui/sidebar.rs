@@ -49,6 +49,22 @@ impl SidebarState {
         )
     }
 
+    pub fn sort_button(&self, bounds: Rect) -> Rect {
+        Rect::new(bounds.right() - 94, bounds.y + 8, 78, 22)
+    }
+
+    pub fn toggle_sort(&mut self) {
+        self.sort = match self.sort {
+            NoteSort::Modified => NoteSort::Alphabetical,
+            NoteSort::Alphabetical => NoteSort::Modified,
+        };
+        let mut notes = std::mem::take(&mut self.notes);
+        if matches!(self.sort, NoteSort::Alphabetical) {
+            notes.sort_by_key(|note| note.title.to_lowercase());
+        }
+        self.notes = notes;
+    }
+
     pub fn note_at(&self, bounds: Rect, x: i32, y: i32) -> Option<(i64, NoteAction)> {
         for (index, note) in self.notes.iter().enumerate() {
             let card = self.card_rect(bounds, index);

@@ -24,6 +24,7 @@ pub enum ToolbarAction {
     Outdent,
     Indent,
     Highlight(LineColour),
+    ClearHighlight,
 }
 
 pub fn buttons(layout: Layout) -> Vec<(Button, ToolbarAction)> {
@@ -67,6 +68,12 @@ pub fn buttons(layout: Layout) -> Vec<(Button, ToolbarAction)> {
             ToolbarAction::Highlight(colour),
         ));
         x += 27;
+    }
+    if x + 50 <= layout.toolbar.right() - 8 {
+        buttons.push((
+            Button::new("Clear", Rect::new(x, y, 50, 26)),
+            ToolbarAction::ClearHighlight,
+        ));
     }
     buttons
 }

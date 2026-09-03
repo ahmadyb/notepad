@@ -48,6 +48,7 @@ impl ChromeRenderer {
         extract: &ExtractPanelState,
         sidebar_query: &str,
         sidebar_focused: bool,
+        sidebar_sort: &str,
         show_line_numbers: bool,
         active_tab: usize,
         pointer: (i32, i32),
@@ -72,6 +73,7 @@ impl ChromeRenderer {
             notes,
             sidebar_query,
             sidebar_focused,
+            sidebar_sort,
             pointer,
         );
         self.editor(
@@ -368,6 +370,7 @@ impl ChromeRenderer {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn sidebar(
         &self,
         pixmap: &mut Pixmap,
@@ -376,6 +379,7 @@ impl ChromeRenderer {
         notes: &[Note],
         query: &str,
         focused: bool,
+        sort_label: &str,
         pointer: (i32, i32),
     ) {
         if !layout.sidebar_open || layout.sidebar.w <= 0 {
@@ -398,6 +402,9 @@ impl ChromeRenderer {
             theme.muted_text,
             10.0,
         );
+        let sort = Rect::new(layout.sidebar.right() - 94, layout.sidebar.y + 8, 78, 22);
+        small_button(pixmap, sort, theme, sort.contains(pointer.0, pointer.1));
+        self.text(pixmap, sort.x + 9, sort.y + 15, sort_label, theme.muted_text, 9.0);
         let search = Rect::new(
             layout.sidebar.x + 12,
             layout.sidebar.y + 40,

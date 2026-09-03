@@ -203,6 +203,11 @@ impl NativeApplication {
             &self.extract,
             &self.sidebar.query,
             self.focus == InputFocus::Sidebar,
+            if matches!(self.sidebar.sort, crate::ui::sidebar::NoteSort::Modified) {
+                "Recent"
+            } else {
+                "A–Z"
+            },
             settings.show_line_numbers,
             self.controller.active_tab_index(),
             self.pointer,
@@ -455,6 +460,7 @@ impl NativeApplication {
                 ToolbarAction::Outdent => self.controller.handle_tab(true),
                 ToolbarAction::Indent => self.controller.handle_tab(false),
                 ToolbarAction::Highlight(colour) => self.controller.apply_highlight(colour),
+                ToolbarAction::ClearHighlight => self.controller.apply_highlight(LineColour::None),
             }
             break;
         }
@@ -535,6 +541,12 @@ impl NativeApplication {
     }
 
     fn handle_sidebar_click(&mut self, layout: Layout, x: i32, y: i32) {
+        let sort = self.sidebar.sort_button(layout.sidebar);
+        if sort.contains(x, y) {
+            self.sidebar.toggle_sort();
+            self.refresh_sidebar();
+            return;
+        }
         let search = Rect::new(
             layout.sidebar.x + 12,
             layout.sidebar.y + 40,
@@ -1074,6 +1086,7 @@ fn resize_surface(
     );
 }
 
+#[cfg(windows)]
 fn indicator_slot(colour: LineColour) -> usize {
     match colour {
         LineColour::Yellow => 0,
