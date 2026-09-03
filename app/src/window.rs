@@ -256,7 +256,9 @@ impl NativeApplication {
         match hit_test(layout, x, y) {
             HitTarget::Minimize => self.controller.minimise(),
             HitTarget::Maximize => self.controller.toggle_maximise(),
-            HitTarget::Close => self.controller.close_window(),
+            HitTarget::Close => {
+                self.controller.close_window();
+            }
             HitTarget::Drag => {
                 let _ = window.drag_window();
             }

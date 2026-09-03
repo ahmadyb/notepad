@@ -248,15 +248,16 @@ impl ChromeRenderer {
             theme,
             find.focus == ui::find_bar::FindField::Query,
         );
+        let query_text = if find.query.is_empty() {
+            "Find in document…".to_owned()
+        } else {
+            clip_text(&find.query, 34)
+        };
         self.text(
             pixmap,
             query_rect.x + 10,
             query_rect.y + 19,
-            if find.query.is_empty() {
-                "Find in document…"
-            } else {
-                &clip_text(&find.query, 34)
-            },
+            &query_text,
             if find.query.is_empty() {
                 theme.muted_text
             } else {
@@ -305,15 +306,16 @@ impl ChromeRenderer {
                 theme,
                 find.focus == ui::find_bar::FindField::Replacement,
             );
+            let replacement_text = if find.replacement.is_empty() {
+                "Replace with…".to_owned()
+            } else {
+                clip_text(&find.replacement, 34)
+            };
             self.text(
                 pixmap,
                 replacement.x + 10,
                 replacement.y + 19,
-                if find.replacement.is_empty() {
-                    "Replace with…"
-                } else {
-                    &clip_text(&find.replacement, 34)
-                },
+                &replacement_text,
                 if find.replacement.is_empty() {
                     theme.muted_text
                 } else {
@@ -393,15 +395,16 @@ impl ChromeRenderer {
             30,
         );
         input_box(pixmap, search, theme, false);
+        let search_text = if query.is_empty() {
+            "⌕  Search notes…".to_owned()
+        } else {
+            format!("⌕  {}", clip_text(query, 28))
+        };
         self.text(
             pixmap,
             search.x + 10,
             search.y + 20,
-            if query.is_empty() {
-                "⌕  Search notes…"
-            } else {
-                &format!("⌕  {}", clip_text(query, 28))
-            },
+            &search_text,
             if query.is_empty() {
                 theme.muted_text
             } else {
