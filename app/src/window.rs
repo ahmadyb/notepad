@@ -136,6 +136,7 @@ impl NativeApplication {
         let Ok(mut buffer) = surface.buffer_mut() else {
             return;
         };
+        #[allow(clippy::chunks_exact_to_as_chunks)]
         for (pixel, rgba) in buffer.iter_mut().zip(pixmap.data().chunks_exact(4)) {
             *pixel = (u32::from(rgba[0]) << 16)
                 | (u32::from(rgba[1]) << 8)
