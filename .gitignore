@@ -1,0 +1,6 @@
+/target/
+artifacts/
+.package/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

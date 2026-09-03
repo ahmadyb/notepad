@@ -1,0 +1,2 @@
+use super::settings::write_json;use crate::types::SessionData;use crate::Result;use std::fs;use std::path::{Path,PathBuf};
+#[derive(Debug,Clone)]pub struct SessionStore{path:PathBuf}impl SessionStore{pub fn new(path:impl Into<PathBuf>)->Self{Self{path:path.into()}}pub fn load(&self)->Result<SessionData>{if !self.path.exists(){return Ok(SessionData::default())}Ok(serde_json::from_slice(&fs::read(&self.path)?)?)}pub fn save(&self,s:&SessionData)->Result<()>{write_json(&self.path,s)}pub fn path(&self)->&Path{&self.path}}

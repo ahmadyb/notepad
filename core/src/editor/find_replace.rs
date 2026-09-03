@@ -1,0 +1,10 @@
+use crate::{CoreError,Result};
+use regex::{Regex,RegexBuilder};
+#[derive(Debug,Clone,PartialEq,Eq)]pub struct FindOptions{pub case_sensitive:bool,pub regex:bool,pub whole_word:bool}
+impl Default for FindOptions{fn default()->Self{Self{case_sensitive:false,regex:false,whole_word:false}}}
+#[derive(Debug,Clone,PartialEq,Eq)]pub struct FindMatch{pub start:usize,pub end:usize,pub line:usize,pub column:usize}
+pub fn find_all(text:&str,query:&str,o:&FindOptions)->Result<Vec<FindMatch>>{if query.is_empty(){return Ok(Vec::new())}let regex=compile(query,o)?;Ok(regex.find_iter(text).map(|m|make(text,m.start(),m.end())).collect())}
+pub fn replace_all(text:&str,query:&str,replacement:&str,o:&FindOptions)->Result<(String,usize)>{if query.is_empty(){return Ok((text.to_owned(),0))}let regex=compile(query,o)?;let count=regex.find_iter(text).count();if count==0{return Ok((text.to_owned(),0))}let replaced=if o.regex{regex.replace_all(text,replacement).into_owned()}else{regex.replace_all(text,regex::NoExpand(replacement)).into_owned()};Ok((replaced,count))}
+pub fn replace_first(text:&str,query:&str,replacement:&str,o:&FindOptions)->Result<(String,bool)>{if query.is_empty(){return Ok((text.to_owned(),false))}let regex=compile(query,o)?;let Some(m)=regex.find(text)else{return Ok((text.to_owned(),false))};let replacement=if o.regex{regex.replacen(text,1,replacement).into_owned()}else{let mut out=String::with_capacity(text.len());out.push_str(&text[..m.start()]);out.push_str(replacement);out.push_str(&text[m.end()..]);out};Ok((replacement,true))}
+fn compile(query:&str,o:&FindOptions)->Result<Regex>{let mut pattern=if o.regex{query.to_owned()}else{regex::escape(query)};if o.whole_word{pattern=format!(r"\b(?:{pattern})\b")}RegexBuilder::new(&pattern).case_insensitive(!o.case_sensitive).build().map_err(|e|CoreError::InvalidValue(format!("invalid search regex: {e}")))}
+fn make(text:&str,start:usize,end:usize)->FindMatch{let line=text[..start].bytes().filter(|b|*b==b'\n').count();let line_start=text[..start].rfind('\n').map_or(0,|p|p+1);FindMatch{start,end,line,column:text[line_start..start].chars().count()}}

@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["core", "app"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[workspace.package]
+version = "1.0.2"
+authors = ["NotePad Pro Contributors"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/ahmadyb/notepad"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+all = "warn"

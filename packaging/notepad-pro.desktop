@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=NotePad Pro
+Comment=Fast native notes and text editing
+Exec=notepad-pro %F
+Icon=notepad-pro
+Terminal=false
+Type=Application
+Categories=Utility;TextEditor;
+MimeType=text/plain;text/markdown;
+StartupWMClass=notepad-pro

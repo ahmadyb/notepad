@@ -1,0 +1,39 @@
+[package]
+name = "notepad-pro"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[lib]
+name = "notepad_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "notepad-pro"
+path = "src/main.rs"
+
+[dependencies]
+arboard = "3.4"
+clap = { version = "4.5", features = ["derive"] }
+cosmic-text = "0.12"
+directories = "5.0"
+fontdue = "0.9"
+notepad-pro-core = { path = "../core" }
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal"] }
+raw-window-handle = "0.6"
+serde.workspace = true
+serde_json.workspace = true
+softbuffer = "0.4"
+tiny-skia = "0.11"
+winit = { version = "0.30", default-features = false, features = ["x11", "rwh_06"] }
+
+[target.'cfg(windows)'.dependencies]
+scintilla-sys = { version = "5.5.7", features = ["win32"] }
+
+[build-dependencies]
+cc = "1.0"
+
+[lints]
+workspace = true

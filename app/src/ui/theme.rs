@@ -1,0 +1,1 @@
+use crate::theme::{Rgba,Theme,ThemeId};pub fn theme_choices()->[(ThemeId,&'static str);7]{[(ThemeId::Light,"Light"),(ThemeId::Dark,"Dark"),(ThemeId::GlassDark,"Glass Dark"),(ThemeId::ClayLight,"Clay Light"),(ThemeId::ClayDark,"Clay Dark"),(ThemeId::NeumorphicLight,"Neumorphic Light"),(ThemeId::NeumorphicDark,"Neumorphic Dark")]}pub fn accent_for(t:Theme)->Rgba{t.accent}

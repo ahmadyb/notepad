@@ -1,0 +1,4 @@
+use crate::{CoreError,Result};use r2d2::{Pool,PooledConnection};use r2d2_sqlite::SqliteConnectionManager;use std::path::Path;
+pub type SqlitePool=Pool<SqliteConnectionManager>;pub type SqliteConn=PooledConnection<SqliteConnectionManager>;
+pub fn open_pool(path:&Path)->Result<SqlitePool>{if let Some(p)=path.parent().filter(|p|!p.as_os_str().is_empty()){std::fs::create_dir_all(p)?}let pool=Pool::builder().max_size(8).min_idle(Some(1)).build(SqliteConnectionManager::file(path)).map_err(|e|CoreError::Pool(e.to_string()))?;let c=pool.get()?;super::schema::migrate(&c)?;Ok(pool)}
+pub fn open_memory()->Result<SqlitePool>{let pool=Pool::builder().max_size(1).min_idle(Some(1)).build(SqliteConnectionManager::memory()).map_err(|e|CoreError::Pool(e.to_string()))?;let c=pool.get()?;super::schema::migrate(&c)?;drop(c);Ok(pool)}

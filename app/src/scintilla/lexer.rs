@@ -1,0 +1,1 @@
+use super::{ffi,DirectEditor};pub fn configure(e:&DirectEditor){e.send(ffi::SCI_SETLEXER,0,0);e.send(ffi::SCI_SETENDATLASTLINE,1,0)}pub fn style_range(e:&DirectEditor,start:usize,len:usize,style:u8){if len>0{e.send(ffi::SCI_STARTSTYLING,start,255);e.send(ffi::SCI_SETSTYLING,len,style as isize)}}

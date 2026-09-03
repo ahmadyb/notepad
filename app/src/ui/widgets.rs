@@ -1,0 +1,3 @@
+use crate::layout::Rect;use crate::theme::{Rgba,Theme};
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]pub enum ButtonState{Normal,Hover,Pressed,Disabled}
+#[derive(Debug,Clone)]pub struct Button{pub label:String,pub rect:Rect,pub state:ButtonState}impl Button{pub fn new(label:impl Into<String>,rect:Rect)->Self{Self{label:label.into(),rect,state:ButtonState::Normal}}pub fn contains(&self,x:i32,y:i32)->bool{self.rect.contains(x,y)}pub fn background(&self,t:Theme)->Rgba{match self.state{ButtonState::Normal=>t.surface,ButtonState::Hover=>t.accent.with_alpha(48),ButtonState::Pressed=>t.accent.with_alpha(100),ButtonState::Disabled=>t.surface.with_alpha(100)}}}

@@ -1,0 +1,3 @@
+use clap::Parser;use notepad_app::{AppController,window};use notepad_core::SessionData;use std::sync::Arc;
+#[derive(Debug,Parser)]#[command(name="notepad-pro",version="1.0.2-scintilla",about="Fast native note editor")]struct Cli{#[arg(value_name="FILE")]files:Vec<String>}
+fn main()->Result<(),Box<dyn std::error::Error>>{let cli=Cli::parse();let c=Arc::new(AppController::new()?);c.set_startup_files(cli.files);if let Ok(s)=c.load_session(){c.restore_session(s)}for p in c.get_startup_files(){if let Err(e)=c.open_document(p){eprintln!("could not open file: {e}")}}let r=window::run(Arc::clone(&c));let _=c.save_session(SessionData::default());r.map_err(Into::into)}

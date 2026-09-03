@@ -1,0 +1,21 @@
+[package]
+name = "notepad-pro-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "notepad_core"
+path = "src/lib.rs"
+
+[dependencies]
+encoding_rs = "0.8"
+directories = "5.0"
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
+regex = "1.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

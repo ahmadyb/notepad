@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="NotePad Pro" Manufacturer="NotePad Pro Contributors" Version="1.0.2.0" UpgradeCode="8BFD7E6B-9B2B-4E77-9A2B-1E3F35AD71C5">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of NotePad Pro is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Feature Id="MainFeature" Title="NotePad Pro" Level="1">
+      <Component Directory="INSTALLFOLDER">
+        <File Source="$(var.PublishDir)\notepad-pro.exe" KeyPath="yes" />
+        <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="NotePad Pro" Target="[INSTALLFOLDER]notepad-pro.exe" WorkingDirectory="INSTALLFOLDER" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>

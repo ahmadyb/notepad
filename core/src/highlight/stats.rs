@@ -1,0 +1,2 @@
+use crate::types::{HighlightStats,LineColour,LineMetadata};use std::collections::HashMap;
+pub fn highlight_stats(text:&str,metadata:&[LineMetadata])->HighlightStats{let total=text.split('\n').count().max(1);let mut map=HashMap::new();for m in metadata.iter().take(total){if m.colour!=LineColour::None{*map.entry(m.colour).or_insert(0)+=1}}let mut counts:Vec<_>=map.into_iter().collect();counts.sort_by_key(|(c,_)|c.name());HighlightStats{total_lines:total,highlighted_lines:counts.iter().map(|(_,n)|*n).sum(),counts}}
