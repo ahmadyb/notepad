@@ -17,10 +17,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, Ime, MouseButton, WindowEvent};
+use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
-use winit::window::{Window, WindowId};
+use winit::window::{Icon, Window, WindowId};
 
 pub fn run(controller: Arc<AppController>) -> Result<(), String> {
     let event_loop = EventLoop::new().map_err(|error| error.to_string())?;
@@ -57,6 +57,7 @@ struct NativeApplication {
     pointer: (i32, i32),
     mouse_down: bool,
     drag_anchor: usize,
+    scroll_line: usize,
     last_redraw: Instant,
     last_autosave: Instant,
 }
@@ -82,6 +83,7 @@ impl NativeApplication {
             pointer: (0, 0),
             mouse_down: false,
             drag_anchor: 0,
+            scroll_line: 0,
             last_redraw: Instant::now(),
             last_autosave: Instant::now(),
         }
@@ -92,10 +94,12 @@ impl NativeApplication {
             return Ok(());
         }
         let state = self.controller.window_state();
+        let icon = Icon::from_rgba(app_icon_pixels(), 32, 32).ok();
         let window = Arc::new(
             event_loop
                 .create_window(
                     Window::default_attributes()
+                        .with_window_icon(icon)
                         .with_title("NotePad Pro")
                         .with_decorations(false)
                         .with_resizable(true)
@@ -189,7 +193,10 @@ impl NativeApplication {
         self.refresh_sidebar();
         self.refresh_extract();
         self.sync_native_editor(layout);
-        let snapshot = self.controller.active_snapshot();
+        let mut snapshot = self.controller.active_snapshot();
+        if let Some(snapshot) = snapshot.as_mut() {
+            snapshot.scroll_line = self.scroll_line;
+        }
         let tabs = self.controller.tab_summaries();
         let Some(pixmap) = self.renderer.render(
             size.width,
@@ -209,6 +216,7 @@ impl NativeApplication {
                 "A–Z"
             },
             settings.show_line_numbers,
+            self.controller.word_wrap(),
             self.controller.active_tab_index(),
             self.pointer,
         ) else {
@@ -248,8 +256,10 @@ impl NativeApplication {
             InputFocus::Editor | InputFocus::Sidebar => {}
         }
         #[cfg(windows)]
-        if !matches!(focus, InputFocus::Editor) {
-            if let Some(host) = self.scintilla.as_ref() {
+        if let Some(host) = self.scintilla.as_ref() {
+            if matches!(focus, InputFocus::Editor) {
+                host.focus();
+            } else {
                 host.focus_parent();
             }
         }
@@ -313,7 +323,7 @@ impl NativeApplication {
         {
             self.controller.toggle_checkbox(line);
         } else {
-            let cursor = hit_cursor(&snapshot, layout, x, y, settings.font_size);
+            let cursor = hit_cursor(&snapshot, layout, x, y, settings.font_size, self.scroll_line);
             self.controller.set_active_cursor(cursor, false);
             self.drag_anchor = cursor;
             self.mouse_down = true;
@@ -504,8 +514,16 @@ impl NativeApplication {
                 layout.find_bar.y + 12
             };
             let case_check = Rect::new(layout.find_bar.right() - 230, check_y, 20, 20);
+            let regex_check = Rect::new(layout.find_bar.right() - 150, check_y, 20, 20);
+            let whole_check = Rect::new(layout.find_bar.right() - 95, check_y, 20, 20);
             if case_check.contains(x, y) {
                 self.find.options.case_sensitive = !self.find.options.case_sensitive;
+                self.refresh_find(false);
+            } else if regex_check.contains(x, y) {
+                self.find.options.regex = !self.find.options.regex;
+                self.refresh_find(false);
+            } else if whole_check.contains(x, y) {
+                self.find.options.whole_word = !self.find.options.whole_word;
                 self.refresh_find(false);
             } else if self.find.show_replace {
                 let replacement = Rect::new(layout.find_bar.x + 14, layout.find_bar.y + 48, 300, 28);
@@ -816,6 +834,7 @@ impl NativeApplication {
     }
 
     fn reset_native_tab(&mut self) {
+        self.scroll_line = 0;
         #[cfg(windows)]
         {
             self.native_tab = usize::MAX;
@@ -992,9 +1011,24 @@ impl ApplicationHandler for NativeApplication {
                             self.pointer.0,
                             self.pointer.1,
                             settings.font_size,
+                            self.scroll_line,
                         );
                         self.controller.set_active_selection(self.drag_anchor, cursor);
                     }
+                }
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let direction = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y.signum() as i32,
+                    MouseScrollDelta::PixelDelta(position) => position.y.signum() as i32,
+                };
+                if direction > 0 {
+                    self.scroll_line = self.scroll_line.saturating_sub(3);
+                } else if direction < 0 {
+                    self.scroll_line = self.scroll_line.saturating_add(3);
                 }
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
@@ -1086,6 +1120,28 @@ fn resize_surface(
     );
 }
 
+fn app_icon_pixels() -> Vec<u8> {
+    let mut pixels = vec![0_u8; 32 * 32 * 4];
+    for y in 0..32 {
+        for x in 0..32 {
+            let index = (y * 32 + x) * 4;
+            let page = x >= 7 && x < 26 && y >= 4 && y < 29;
+            let fold = x >= 20 && y < 10;
+            let (red, green, blue, alpha) = if page {
+                if fold {
+                    (129, 140, 248, 255)
+                } else {
+                    (37, 40, 64, 255)
+                }
+            } else {
+                (37, 40, 64, 0)
+            };
+            pixels[index..index + 4].copy_from_slice(&[red, green, blue, alpha]);
+        }
+    }
+    pixels
+}
+
 #[cfg(windows)]
 fn indicator_slot(colour: LineColour) -> usize {
     match colour {
@@ -1100,14 +1156,22 @@ fn indicator_slot(colour: LineColour) -> usize {
     }
 }
 
-fn hit_cursor(snapshot: &EditorSnapshot, layout: Layout, x: i32, y: i32, size: f32) -> usize {
+fn hit_cursor(
+    snapshot: &EditorSnapshot,
+    layout: Layout,
+    x: i32,
+    y: i32,
+    size: f32,
+    scroll_line: usize,
+) -> usize {
     let line_height = (size * 1.55).ceil() as i32;
     let margin = Layout::line_number_width(
         snapshot.text.split('\n').count(),
         (size * 0.62) as i32,
     );
     let lines: Vec<&str> = snapshot.text.split('\n').collect();
-    let line = (((y - layout.editor.y - 8).max(0) / line_height.max(1)) as usize)
+    let line = ((((y - layout.editor.y - 8).max(0) / line_height.max(1)) as usize)
+        + scroll_line)
         .min(lines.len().saturating_sub(1));
     let start = lines
         .iter()

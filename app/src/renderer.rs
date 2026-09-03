@@ -50,6 +50,7 @@ impl ChromeRenderer {
         sidebar_focused: bool,
         sidebar_sort: &str,
         show_line_numbers: bool,
+        word_wrap: bool,
         active_tab: usize,
         pointer: (i32, i32),
     ) -> Option<Pixmap> {
@@ -83,6 +84,7 @@ impl ChromeRenderer {
             snapshot,
             find,
             show_line_numbers,
+            word_wrap,
         );
         if extract.open && layout.extract_open {
             self.extract(&mut pixmap, layout, theme, extract, pointer);
@@ -358,16 +360,23 @@ impl ChromeRenderer {
         } else {
             layout.find_bar.y + 12
         };
-        let check = Rect::new(layout.find_bar.right() - 230, check_y, 20, 20);
-        checkbox(pixmap, check, theme, find.options.case_sensitive);
-        self.text(
-            pixmap,
-            check.right() + 6,
-            check.y + 15,
-            "Match case",
-            theme.muted_text,
-            10.0,
-        );
+        let options = [
+            (layout.find_bar.right() - 230, find.options.case_sensitive, "Match case"),
+            (layout.find_bar.right() - 150, find.options.regex, "Regex"),
+            (layout.find_bar.right() - 95, find.options.whole_word, "Whole"),
+        ];
+        for (x, checked, label) in options {
+            let check = Rect::new(x, check_y, 20, 20);
+            checkbox(pixmap, check, theme, checked);
+            self.text(
+                pixmap,
+                check.right() + 5,
+                check.y + 15,
+                label,
+                theme.muted_text,
+                9.0,
+            );
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -489,6 +498,7 @@ impl ChromeRenderer {
         snapshot: Option<&EditorSnapshot>,
         find: &FindBarState,
         show_line_numbers: bool,
+        word_wrap: bool,
     ) {
         fill_rect(pixmap, layout.editor, theme.editor_bg);
         let Some(snapshot) = snapshot else {
@@ -501,6 +511,9 @@ impl ChromeRenderer {
         } else {
             12
         };
+        let max_chars = ((layout.editor.w - margin - 24).max(1) as f32
+            / (self.font_size * 0.62).max(1.0)) as usize;
+        let visual_lines = make_visual_lines(&lines, max_chars, word_wrap);
         if show_line_numbers {
             fill_rect(
                 pixmap,
@@ -513,6 +526,18 @@ impl ChromeRenderer {
             .bytes()
             .filter(|byte| *byte == b'\n')
             .count();
+        let line_start = snapshot.text[..cursor]
+            .rfind('\n')
+            .map_or(0, |position| position + 1);
+        let cursor_column = snapshot.text[line_start..cursor].chars().count();
+        let cursor_visual_line = visual_lines
+            .iter()
+            .position(|line| {
+                line.logical == cursor_line
+                    && cursor_column >= line.start_column
+                    && cursor_column <= line.start_column + line.text.chars().count()
+            })
+            .unwrap_or_else(|| visual_lines.len().saturating_sub(1));
         let selected = snapshot.selection.range();
         let selection_start_line = snapshot
             .text
@@ -529,21 +554,35 @@ impl ChromeRenderer {
             .filter(|byte| *byte == b'\n')
             .count();
         let visible = ((layout.editor.h - 18).max(0) / line_height.max(1)) as usize + 1;
-        for (index, line) in lines.iter().enumerate().take(visible) {
-            let baseline = layout.editor.y + 24 + index as i32 * line_height;
+        let scroll_line = snapshot
+            .scroll_line
+            .min(visual_lines.len().saturating_sub(visible));
+        for (visual_index, visual_line) in visual_lines
+            .iter()
+            .enumerate()
+            .skip(scroll_line)
+            .take(visible)
+        {
+            let logical_index = visual_line.logical;
+            let line = visual_line.text;
+            let screen_index = visual_index - scroll_line;
+            let baseline = layout.editor.y + 24 + screen_index as i32 * line_height;
             let row = Rect::new(
                 layout.editor.x + margin,
                 baseline - line_height + 5,
                 (layout.editor.w - margin - 8).max(0),
                 line_height,
             );
-            if index == cursor_line {
+            if visual_index == cursor_visual_line {
                 fill_rect(pixmap, row, theme.accent.with_alpha(13));
             }
-            if !selected.is_empty() && index >= selection_start_line && index <= selection_end_line {
+            if !selected.is_empty()
+                && logical_index >= selection_start_line
+                && logical_index <= selection_end_line
+            {
                 fill_rect(pixmap, row, theme.accent.with_alpha(48));
             }
-            if let Some(metadata) = snapshot.metadata.get(index) {
+            if let Some(metadata) = snapshot.metadata.get(logical_index) {
                 if metadata.colour != LineColour::None {
                     fill_rect(pixmap, row, line_colour(metadata.colour).with_alpha(64));
                     fill_rect(
@@ -559,7 +598,7 @@ impl ChromeRenderer {
                     ListType::Number => "·",
                     ListType::None => "",
                 };
-                if !marker.is_empty() {
+                if !marker.is_empty() && visual_line.start_column == 0 {
                     self.text(
                         pixmap,
                         layout.editor.x + 6 + metadata.indent as i32 * 14,
@@ -570,12 +609,12 @@ impl ChromeRenderer {
                     );
                 }
             }
-            if show_line_numbers {
+            if show_line_numbers && visual_line.start_column == 0 {
                 self.text(
                     pixmap,
                     layout.editor.x + margin - 10,
                     baseline,
-                    &(index + 1).to_string(),
+                    &(logical_index + 1).to_string(),
                     theme.muted_text,
                     10.0,
                 );
@@ -589,11 +628,16 @@ impl ChromeRenderer {
                 self.font_size,
             );
             for found in &find.matches {
-                if found.line == index {
+                if found.line == logical_index
+                    && found.column >= visual_line.start_column
+                    && found.column < visual_line.start_column + line.chars().count()
+                {
                     let x = layout.editor.x
                         + margin
                         + 14
-                        + (found.column as f32 * self.font_size * 0.62) as i32;
+                        + ((found.column - visual_line.start_column) as f32
+                            * self.font_size
+                            * 0.62) as i32;
                     fill_rect(
                         pixmap,
                         Rect::new(x, baseline + 2, (found.end - found.start).max(2) as i32 * 7, 2),
@@ -602,15 +646,23 @@ impl ChromeRenderer {
                 }
             }
         }
-        let line_start = snapshot.text[..cursor]
-            .rfind('\n')
-            .map_or(0, |position| position + 1);
-        let column = snapshot.text[line_start..cursor].chars().count();
+        let column = cursor_column;
         fill_rect(
             pixmap,
             Rect::new(
-                layout.editor.x + margin + 14 + (column as f32 * self.font_size * 0.62) as i32,
-                layout.editor.y + 10 + cursor_line as i32 * line_height,
+                layout.editor.x
+                    + margin
+                    + 14
+                    + ((column.saturating_sub(
+                        visual_lines
+                            .get(cursor_visual_line)
+                            .map_or(0, |line| line.start_column),
+                    )) as f32
+                        * self.font_size
+                        * 0.62) as i32,
+                layout.editor.y
+                    + 10
+                    + cursor_visual_line.saturating_sub(scroll_line) as i32 * line_height,
                 2,
                 (line_height - 5).max(3),
             ),
@@ -822,6 +874,56 @@ impl ChromeRenderer {
             pen += metrics.advance_width;
         }
     }
+}
+
+struct VisualLine<'a> {
+    logical: usize,
+    start_column: usize,
+    text: &'a str,
+}
+
+fn make_visual_lines<'a>(
+    lines: &[&'a str],
+    max_chars: usize,
+    wrap: bool,
+) -> Vec<VisualLine<'a>> {
+    let max_chars = max_chars.max(1);
+    let mut visual = Vec::new();
+    for (logical, line) in lines.iter().copied().enumerate() {
+        let characters: Vec<(usize, char)> = line.char_indices().collect();
+        if !wrap || characters.len() <= max_chars {
+            visual.push(VisualLine {
+                logical,
+                start_column: 0,
+                text: line,
+            });
+            continue;
+        }
+        let mut start = 0;
+        while start < characters.len() {
+            let end = (start + max_chars).min(characters.len());
+            let byte_start = characters[start].0;
+            let byte_end = if end < characters.len() {
+                characters[end].0
+            } else {
+                line.len()
+            };
+            visual.push(VisualLine {
+                logical,
+                start_column: start,
+                text: &line[byte_start..byte_end],
+            });
+            start = end;
+        }
+    }
+    if visual.is_empty() {
+        visual.push(VisualLine {
+            logical: 0,
+            start_column: 0,
+            text: "",
+        });
+    }
+    visual
 }
 
 fn load_font() -> Option<Font> {

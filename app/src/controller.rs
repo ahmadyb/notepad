@@ -8,6 +8,8 @@ use notepad_core::{
 use rfd::FileDialog;
 use serde_json::Value;
 use std::fs;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, RwLock};
 
@@ -179,6 +181,7 @@ pub struct AppController {
     startup: Mutex<Vec<PathBuf>>,
     state: Mutex<AppState>,
     note_ids: Mutex<Vec<Option<i64>>>,
+    note_fingerprints: Mutex<Vec<Option<u64>>>,
     window: RwLock<WindowState>,
     command: Mutex<Option<WindowCommand>>,
 }
@@ -224,6 +227,7 @@ impl AppController {
             startup: Mutex::new(Vec::new()),
             state: Mutex::new(AppState::default()),
             note_ids: Mutex::new(vec![None]),
+            note_fingerprints: Mutex::new(vec![None]),
             window: RwLock::new(window),
             command: Mutex::new(None),
         })
@@ -371,6 +375,9 @@ impl AppController {
         if let Ok(mut ids) = self.note_ids.lock() {
             *ids = vec![None; self.tab_count()];
         }
+        if let Ok(mut fingerprints) = self.note_fingerprints.lock() {
+            *fingerprints = vec![None; self.tab_count()];
+        }
         self.set_window_state(session.window);
     }
 
@@ -465,6 +472,11 @@ impl AppController {
                 if *value == Some(id) {
                     *value = None;
                 }
+            }
+        }
+        if let Ok(mut fingerprints) = self.note_fingerprints.lock() {
+            for value in fingerprints.iter_mut() {
+                *value = None;
             }
         }
         Ok(())
@@ -622,10 +634,14 @@ impl AppController {
                 if let Ok(mut ids) = self.note_ids.lock() {
                     ids.push(None);
                 }
+                if let Ok(mut fingerprints) = self.note_fingerprints.lock() {
+                    fingerprints.push(None);
+                }
             }
         }
         if replaced_empty {
             self.set_active_note_id(None);
+            self.set_active_fingerprint(None);
         }
         Ok(())
     }
@@ -650,12 +666,16 @@ impl AppController {
                 if let Ok(mut ids) = self.note_ids.lock() {
                     ids.push(Some(id));
                 }
+                if let Ok(mut fingerprints) = self.note_fingerprints.lock() {
+                    fingerprints.push(None);
+                }
             }
         } else {
             return Ok(false);
         }
         if replaced_empty {
             self.set_active_note_id(Some(id));
+            self.set_active_fingerprint(None);
         }
         Ok(true)
     }
@@ -676,6 +696,9 @@ impl AppController {
             state.active_tab = state.tabs.len() - 1;
             if let Ok(mut ids) = self.note_ids.lock() {
                 ids.push(None);
+            }
+            if let Ok(mut fingerprints) = self.note_fingerprints.lock() {
+                fingerprints.push(None);
             }
         }
     }
@@ -1005,7 +1028,14 @@ impl AppController {
         let original = self.active_tab_index();
         let mut saved_any = false;
         for index in 0..self.tab_count() {
-            if !self.tab_is_dirty(index) || !self.switch_tab(index) {
+            if !self.tab_is_dirty(index) {
+                continue;
+            }
+            let fingerprint = self.document_fingerprint(index);
+            if fingerprint.is_some() && self.note_fingerprint(index) == fingerprint {
+                continue;
+            }
+            if !self.switch_tab(index) {
                 continue;
             }
             if self.save_active_note().is_ok() {
@@ -1056,9 +1086,15 @@ impl AppController {
         let mut data = data;
         data.pinned = pinned;
         let saved_id = self.notes.save_note(&data)?;
+        let fingerprint = self.document_fingerprint(index);
         if let Ok(mut ids) = self.note_ids.lock() {
             if let Some(slot) = ids.get_mut(index) {
                 *slot = Some(saved_id);
+            }
+        }
+        if let Ok(mut fingerprints) = self.note_fingerprints.lock() {
+            if let Some(slot) = fingerprints.get_mut(index) {
+                *slot = fingerprint;
             }
         }
         Ok(saved_id)
@@ -1153,6 +1189,31 @@ impl AppController {
         Ok(true)
     }
 
+    fn document_fingerprint(&self, index: usize) -> Option<u64> {
+        self.state.lock().ok().and_then(|state| {
+            state.tabs.get(index).map(|document| {
+                fingerprint(document.buffer.text(), document.buffer.metadata())
+            })
+        })
+    }
+
+    fn note_fingerprint(&self, index: usize) -> Option<u64> {
+        self.note_fingerprints
+            .lock()
+            .ok()
+            .and_then(|fingerprints| fingerprints.get(index).copied().flatten())
+    }
+
+    fn set_active_fingerprint(&self, fingerprint: Option<u64>) {
+        let index = self.active_tab_index();
+        if let Ok(mut fingerprints) = self.note_fingerprints.lock() {
+            if fingerprints.len() <= index {
+                fingerprints.resize(index + 1, None);
+            }
+            fingerprints[index] = fingerprint;
+        }
+    }
+
     fn note_id(&self, index: usize) -> Option<i64> {
         self.note_ids
             .lock()
@@ -1190,6 +1251,14 @@ impl AppController {
                 }
                 if ids.is_empty() {
                     ids.push(None);
+                }
+            }
+            if let Ok(mut fingerprints) = self.note_fingerprints.lock() {
+                if index < fingerprints.len() {
+                    fingerprints.remove(index);
+                }
+                if fingerprints.is_empty() {
+                    fingerprints.push(None);
                 }
             }
             true
@@ -1239,6 +1308,15 @@ fn update_title(document: &mut DocumentState) {
         .find(|line| !line.is_empty())
         .unwrap_or("Untitled");
     document.title = title.chars().take(32).collect();
+}
+
+fn fingerprint(text: &str, metadata: &[LineMetadata]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    text.hash(&mut hasher);
+    serde_json::to_vec(metadata)
+        .unwrap_or_default()
+        .hash(&mut hasher);
+    hasher.finish()
 }
 
 fn note_title(document: &DocumentState) -> String {

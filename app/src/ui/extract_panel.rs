@@ -30,8 +30,9 @@ impl Default for ExtractPanelState {
 
 impl ExtractPanelState {
     pub fn set_available(&mut self, colours: &[(LineColour, usize)]) {
+        let had_available = !self.available_colours.is_empty();
         self.available_colours = colours.to_vec();
-        if !self.selection_initialized {
+        if !self.selection_initialized || (!had_available && !colours.is_empty() && self.selected_colours.is_empty()) {
             self.selected_colours = colours.iter().map(|(colour, _)| *colour).collect();
             self.selection_initialized = true;
         } else {
