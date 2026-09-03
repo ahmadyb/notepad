@@ -24,6 +24,10 @@ $env:NOTEPAD_TARGET = 'x86_64-pc-windows-msvc'
 
 That produces `artifacts/NotePad-Pro-1.0.2.msi`. No browser engine or web runtime is included. The shell uses a software editor surface on backends that cannot host a Scintilla child window; Windows uses the target-specific static Scintilla child host. On Unix distributors may provide a compatible Scintilla source tree or static archive through `NOTEPAD_SCINTILLA_DIR` or `NOTEPAD_SCINTILLA_STATIC` for the optional build bridge.
 
+## Verification
+
+The GitHub workflow runs the native Linux test, clippy, and release-build checks on stable Rust; the source remains compatible with the pinned Rust 1.78 baseline where dependency versions permit it.
+
 ## CLI
 
 ```text
