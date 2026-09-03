@@ -46,7 +46,7 @@ fn custom_colours_round_trip_through_grouped_output() {
 fn search_and_replace_support_unicode_and_literal_dollars() {
     let options = FindOptions::default();
     let (result, count) = replace_all("Éclair $1 éclair", "éclair", "$2", &options).unwrap();
-    assert_eq!((result, count), ("$2 $2".to_owned(), 2));
+    assert_eq!((result, count), ("$2 $1 $2".to_owned(), 2));
 }
 
 #[test]

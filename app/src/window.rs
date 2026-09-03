@@ -30,7 +30,9 @@ struct NativeApplication {
     _context: Option<softbuffer::Context<Arc<Window>>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     scintilla: Option<ScintillaHost>,
+    #[cfg(windows)]
     native_text: String,
+    #[cfg(windows)]
     native_tab: usize,
     renderer: ChromeRenderer,
     find: FindBarState,
@@ -48,7 +50,9 @@ impl NativeApplication {
             _context: None,
             surface: None,
             scintilla: None,
+            #[cfg(windows)]
             native_text: String::new(),
+            #[cfg(windows)]
             native_tab: usize::MAX,
             renderer: ChromeRenderer::new(),
             find: FindBarState::default(),
