@@ -490,6 +490,7 @@ impl ChromeRenderer {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn editor(
         &self,
         pixmap: &mut Pixmap,

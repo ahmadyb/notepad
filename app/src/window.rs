@@ -1125,7 +1125,7 @@ fn app_icon_pixels() -> Vec<u8> {
     for y in 0..32 {
         for x in 0..32 {
             let index = (y * 32 + x) * 4;
-            let page = x >= 7 && x < 26 && y >= 4 && y < 29;
+            let page = (7..26).contains(&x) && (4..29).contains(&y);
             let fold = x >= 20 && y < 10;
             let (red, green, blue, alpha) = if page {
                 if fold {
