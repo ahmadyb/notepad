@@ -48,6 +48,8 @@ struct NativeApplication {
     native_text: String,
     #[cfg(windows)]
     native_tab: usize,
+    #[cfg(windows)]
+    native_selection: (usize, usize),
     renderer: ChromeRenderer,
     find: FindBarState,
     sidebar: SidebarState,
@@ -74,6 +76,8 @@ impl NativeApplication {
             native_text: String::new(),
             #[cfg(windows)]
             native_tab: usize::MAX,
+            #[cfg(windows)]
+            native_selection: (0, 0),
             renderer: ChromeRenderer::new(),
             find: FindBarState::default(),
             sidebar: SidebarState::default(),
@@ -838,6 +842,7 @@ impl NativeApplication {
         #[cfg(windows)]
         {
             self.native_tab = usize::MAX;
+            self.native_selection = (0, 0);
             self.native_text.clear();
         }
     }
@@ -880,6 +885,7 @@ impl NativeApplication {
                 host.direct().set_text(&snapshot.text);
                 host.direct()
                     .set_selection(snapshot.selection.anchor, snapshot.selection.caret);
+                self.native_selection = (snapshot.selection.anchor, snapshot.selection.caret);
                 self.native_text = snapshot.text.clone();
                 self.native_tab = tab;
             } else {
@@ -887,16 +893,43 @@ impl NativeApplication {
                 if native != self.native_text {
                     self.controller.replace_active_text(&native);
                     self.native_text = native;
+                    let native_selection = (
+                        host.direct().get_anchor(),
+                        host.direct().get_current_pos(),
+                    );
+                    self.controller
+                        .set_active_selection(native_selection.0, native_selection.1);
+                    self.native_selection = native_selection;
                 } else if snapshot.text != self.native_text {
                     host.direct().set_text(&snapshot.text);
                     host.direct()
                         .set_selection(snapshot.selection.anchor, snapshot.selection.caret);
+                    self.native_selection = (snapshot.selection.anchor, snapshot.selection.caret);
                     self.native_text = snapshot.text.clone();
+                } else {
+                    let core_selection = (snapshot.selection.anchor, snapshot.selection.caret);
+                    let native_selection = (
+                        host.direct().get_anchor(),
+                        host.direct().get_current_pos(),
+                    );
+                    if core_selection != self.native_selection
+                        && native_selection == self.native_selection
+                    {
+                        host.direct()
+                            .set_selection(core_selection.0, core_selection.1);
+                        self.native_selection = core_selection;
+                    } else if native_selection != self.native_selection
+                        && core_selection == self.native_selection
+                    {
+                        self.controller
+                            .set_active_selection(native_selection.0, native_selection.1);
+                        self.native_selection = native_selection;
+                    } else if core_selection != self.native_selection {
+                        host.direct()
+                            .set_selection(core_selection.0, core_selection.1);
+                        self.native_selection = core_selection;
+                    }
                 }
-                self.controller.set_active_selection(
-                    host.direct().get_anchor(),
-                    host.direct().get_current_pos(),
-                );
             }
             let length = host.direct().get_text().len();
             for slot in 0..7 {
